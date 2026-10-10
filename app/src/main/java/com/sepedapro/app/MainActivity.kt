@@ -68,9 +68,9 @@ class MainActivity : Activity(), LocationListener {
 
 scrollView.addView(
     root,
-    android.widget.ScrollView.LayoutParams(
-        android.widget.ScrollView.LayoutParams.MATCH_PARENT,
-        android.widget.ScrollView.LayoutParams.WRAP_CONTENT
+    android.view.ViewGroup.LayoutParams(
+        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+        android.view.ViewGroup.LayoutParams.WRAP_CONTENT
     )
 )
 
