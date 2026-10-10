@@ -2,6 +2,7 @@ package com.sepedapro.app
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
@@ -24,6 +25,10 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
+import org.json.JSONArray
+import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 class MainActivity : Activity(), LocationListener {
@@ -46,6 +51,7 @@ class MainActivity : Activity(), LocationListener {
     private var tracking = false
     private var isMoving = false
     private var lastLocation: Location? = null
+    private val routeCoordinates = mutableListOf<GeoPoint>()
 
     private var totalDistance = 0.0
     private var totalMovingTime = 0L
@@ -391,6 +397,18 @@ class MainActivity : Activity(), LocationListener {
             }
         )
 
+        val historyButton = Button(this)
+        historyButton.text = "RIWAYAT PERJALANAN"
+        historyButton.setOnClickListener {
+            showTripHistory()
+        }
+        root.addView(
+            historyButton,
+            matchWrap().apply {
+                bottomMargin = dp(8)
+            }
+        )
+
         val info = TextView(this)
         info.textSize = 11f
         info.setTextColor(muted)
@@ -545,6 +563,7 @@ class MainActivity : Activity(), LocationListener {
         aboveThresholdSince = 0L
         lastLocation = null
 
+        routeCoordinates.clear()
         routeLine.setPoints(ArrayList<GeoPoint>())
         map.invalidate()
 
@@ -607,6 +626,10 @@ class MainActivity : Activity(), LocationListener {
             }
         }
 
+        if (tracking) {
+            saveTripHistory()
+        }
+
         tracking = false
         isMoving = false
         lastLocation = null
@@ -648,6 +671,7 @@ class MainActivity : Activity(), LocationListener {
 
         bikeMarker.position = point
         routeLine.addPoint(point)
+        routeCoordinates.add(point)
 
         map.controller.animateTo(point)
         map.invalidate()
@@ -731,6 +755,158 @@ class MainActivity : Activity(), LocationListener {
         }
 
         updateStatistics()
+    }
+
+
+    private fun saveTripHistory() {
+        if (totalElapsedTime <= 0L && totalDistance <= 0.0) {
+            Toast.makeText(
+                this,
+                "Perjalanan terlalu singkat untuk disimpan.",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        try {
+            val preferences = getSharedPreferences(
+                "sepeda_pro_history",
+                MODE_PRIVATE
+            )
+
+            val trips = JSONArray(
+                preferences.getString("trips", "[]") ?: "[]"
+            )
+
+            val trip = JSONObject()
+            trip.put(
+                "date",
+                SimpleDateFormat(
+                    "dd MMM yyyy, HH:mm",
+                    java.util.Locale("id", "ID")
+                ).format(Date(startTime))
+            )
+            trip.put("distance", totalDistance)
+            trip.put("duration", totalElapsedTime)
+            trip.put("moving", totalMovingTime)
+            trip.put("maxSpeed", maxSpeedKmh)
+
+            val average = if (totalMovingTime > 0L) {
+                totalDistance / totalMovingTime * 3.6
+            } else {
+                0.0
+            }
+            trip.put("average", average)
+
+            val route = JSONArray()
+            for (point in routeCoordinates) {
+                val coordinate = JSONObject()
+                coordinate.put("lat", point.latitude)
+                coordinate.put("lon", point.longitude)
+                route.put(coordinate)
+            }
+            trip.put("route", route)
+
+            trips.put(trip)
+
+            val saved = preferences.edit()
+                .putString("trips", trips.toString())
+                .commit()
+
+            Toast.makeText(
+                this,
+                if (saved) {
+                    "Perjalanan berhasil disimpan."
+                } else {
+                    "Riwayat gagal disimpan. Silakan coba lagi."
+                },
+                Toast.LENGTH_LONG
+            ).show()
+        } catch (e: Exception) {
+            Toast.makeText(
+                this,
+                "Gagal menyimpan riwayat perjalanan.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun showTripHistory() {
+        val preferences = getSharedPreferences(
+            "sepeda_pro_history",
+            MODE_PRIVATE
+        )
+
+        val trips = try {
+            JSONArray(preferences.getString("trips", "[]") ?: "[]")
+        } catch (e: Exception) {
+            JSONArray()
+        }
+
+        if (trips.length() == 0) {
+            AlertDialog.Builder(this)
+                .setTitle("Riwayat Perjalanan")
+                .setMessage("Belum ada perjalanan yang tersimpan.")
+                .setPositiveButton("Tutup", null)
+                .show()
+            return
+        }
+
+        val tripList = (0 until trips.length())
+            .map { trips.getJSONObject(it) }
+            .reversed()
+
+        val labels = tripList.mapIndexed { index, trip ->
+            val distance = trip.optDouble("distance", 0.0) / 1000.0
+            val date = trip.optString("date", "Tanggal tidak tersedia")
+            "${index + 1}. $date\n" +
+                String.format(
+                    java.util.Locale.US,
+                    "%.2f km",
+                    distance
+                )
+        }.toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle("Riwayat Perjalanan")
+            .setItems(labels) { _, which ->
+                showTripDetails(tripList[which])
+            }
+            .setNegativeButton("Tutup", null)
+            .show()
+    }
+
+    private fun showTripDetails(trip: JSONObject) {
+        val distance = trip.optDouble("distance", 0.0) / 1000.0
+        val duration = trip.optLong("duration", 0L)
+        val moving = trip.optLong("moving", 0L)
+        val average = trip.optDouble("average", 0.0)
+        val maxSpeed = trip.optDouble("maxSpeed", 0.0)
+        val route = trip.optJSONArray("route") ?: JSONArray()
+
+        val message = String.format(
+            java.util.Locale.US,
+            "Tanggal: %s\n" +
+                "Jarak: %.2f km\n" +
+                "Durasi: %s\n" +
+                "Waktu bergerak: %s\n" +
+                "Kecepatan rata-rata: %.1f km/jam\n" +
+                "Kecepatan maksimum: %.1f km/jam\n" +
+                "Titik rute tersimpan: %d",
+            trip.optString("date", "-"),
+            distance,
+            formatDuration(duration),
+            formatDuration(moving),
+            average,
+            maxSpeed,
+            route.length()
+        )
+
+        AlertDialog.Builder(this)
+            .setTitle("Detail Perjalanan")
+            .setMessage(message)
+            .setPositiveButton("Tutup", null)
+            .show()
     }
 
     override fun onProviderEnabled(provider: String) {
