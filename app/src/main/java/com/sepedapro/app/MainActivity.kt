@@ -8,15 +8,16 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
 import android.graphics.Color
+import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.content.Context
+import android.os.Looper
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import android.content.Context
-import android.os.Looper
 import java.util.Locale
 
 class MainActivity : Activity(), LocationListener {
@@ -36,61 +37,141 @@ class MainActivity : Activity(), LocationListener {
 
     private val locationPermissionCode = 1001
 
+    private val green = Color.rgb(39, 174, 96)
+    private val dark = Color.rgb(18, 25, 22)
+    private val cardColor = Color.rgb(31, 41, 36)
+    private val backgroundColor = Color.rgb(13, 18, 15)
+    private val muted = Color.rgb(170, 185, 176)
+    private val white = Color.WHITE
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         locationManager =
             getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
-        val layout = LinearLayout(this).apply {
+        val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(28, 24, 28, 24)
-            setBackgroundColor(Color.rgb(245, 247, 250))
+            setPadding(22, 18, 22, 12)
+            setBackgroundColor(backgroundColor)
+        }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
         }
 
         val title = TextView(this).apply {
             text = "SEPEDA PRO"
-            textSize = 28f
-            setTextColor(Color.rgb(30, 90, 60))
+            textSize = 27f
+            setTextColor(green)
+            typeface = Typeface.create("sans-serif-black", Typeface.NORMAL)
             gravity = Gravity.CENTER
+            letterSpacing = 0.08f
+        }
+
+        val subtitle = TextView(this).apply {
+            text = "RIDE • TRACK • EXPLORE"
+            textSize = 11f
+            setTextColor(muted)
+            gravity = Gravity.CENTER
+            letterSpacing = 0.12f
+        }
+
+        header.addView(title, matchWidth())
+        header.addView(subtitle, matchWidth())
+        root.addView(header, matchWidth())
+        addSpace(root, 24)
+
+        val speedCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(16, 26, 16, 26)
+            setBackgroundColor(cardColor)
+        }
+
+        val speedLabel = TextView(this).apply {
+            text = "KECEPATAN SAAT INI"
+            textSize = 12f
+            setTextColor(muted)
+            gravity = Gravity.CENTER
+            letterSpacing = 0.1f
         }
 
         speedText = TextView(this).apply {
             text = "0.0"
-            textSize = 76f
-            setTextColor(Color.rgb(30, 90, 60))
+            textSize = 82f
+            setTextColor(white)
+            typeface = Typeface.create("sans-serif-black", Typeface.NORMAL)
             gravity = Gravity.CENTER
         }
 
-        val unitText = TextView(this).apply {
-            text = "km/jam"
-            textSize = 20f
-            setTextColor(Color.DKGRAY)
+        val speedUnit = TextView(this).apply {
+            text = "KM/JAM"
+            textSize = 15f
+            setTextColor(green)
             gravity = Gravity.CENTER
+            letterSpacing = 0.15f
         }
 
-        distanceText = TextView(this).apply {
-            text = "Jarak: 0.00 km"
-            textSize = 20f
-            setTextColor(Color.BLACK)
+        speedCard.addView(speedLabel, matchWidth())
+        speedCard.addView(speedText, matchWidth())
+        speedCard.addView(speedUnit, matchWidth())
+
+        root.addView(
+            speedCard,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        addSpace(root, 18)
+
+        val stats = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
         }
 
-        averageText = TextView(this).apply {
-            text = "Rata-rata: 0.0 km/jam"
-            textSize = 20f
-            setTextColor(Color.BLACK)
-        }
+        val distanceCard = createStatCard(
+            "JARAK TEMPUH",
+            "0.00 km"
+        )
+        distanceText = distanceCard.second
 
-        statusText = TextView(this).apply {
-            text = "Siap memulai perjalanan"
-            textSize = 16f
-            gravity = Gravity.CENTER
-            setTextColor(Color.DKGRAY)
-        }
+        val averageCard = createStatCard(
+            "KECEPATAN RATA-RATA",
+            "0.0 km/jam"
+        )
+        averageText = averageCard.second
+
+        val statParams = LinearLayout.LayoutParams(
+            0,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            1f
+        )
+
+        statParams.marginEnd = 7
+        stats.addView(distanceCard.first, statParams)
+
+        val secondParams = LinearLayout.LayoutParams(
+            0,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            1f
+        )
+        secondParams.marginStart = 7
+        stats.addView(averageCard.first, secondParams)
+
+        root.addView(stats, matchWidth())
+        addSpace(root, 22)
 
         startButton = Button(this).apply {
-            text = "MULAI BERSEPEDA"
+            text = "▶  MULAI BERSEPEDA"
+            textSize = 15f
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setBackgroundColor(green)
+            typeface = Typeface.DEFAULT_BOLD
+
             setOnClickListener {
                 if (tracking) {
                     stopTracking()
@@ -100,20 +181,79 @@ class MainActivity : Activity(), LocationListener {
             }
         }
 
-        layout.addView(title, matchWidth())
-        addSpace(layout, 24)
-        layout.addView(speedText, matchWidth())
-        layout.addView(unitText, matchWidth())
-        addSpace(layout, 24)
-        layout.addView(distanceText, matchWidth())
-        addSpace(layout, 12)
-        layout.addView(averageText, matchWidth())
-        addSpace(layout, 24)
-        layout.addView(startButton, matchWidth())
-        addSpace(layout, 16)
-        layout.addView(statusText, matchWidth())
+        root.addView(
+            startButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                58
+            )
+        )
 
-        setContentView(layout)
+        addSpace(root, 14)
+
+        statusText = TextView(this).apply {
+            text = "●  SIAP MEMULAI PERJALANAN"
+            textSize = 12f
+            setTextColor(muted)
+            gravity = Gravity.CENTER
+        }
+
+        root.addView(statusText, matchWidth())
+
+        val spacer = View(this)
+        root.addView(
+            spacer,
+            LinearLayout.LayoutParams(
+                1,
+                0,
+                1f
+            )
+        )
+
+        val footer = TextView(this).apply {
+            text = "created by @sepedahankekantor"
+            textSize = 10f
+            setTextColor(Color.rgb(120, 140, 128))
+            gravity = Gravity.CENTER
+        }
+
+        root.addView(footer, matchWidth())
+
+        setContentView(root)
+    }
+
+    private fun createStatCard(
+        label: String,
+        initialValue: String
+    ): Pair<LinearLayout, TextView> {
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(8, 20, 8, 20)
+            setBackgroundColor(cardColor)
+        }
+
+        val labelText = TextView(this).apply {
+            text = label
+            textSize = 10f
+            setTextColor(muted)
+            gravity = Gravity.CENTER
+        }
+
+        val valueText = TextView(this).apply {
+            text = initialValue
+            textSize = 18f
+            setTextColor(white)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+        }
+
+        card.addView(labelText, matchWidth())
+        addSpace(card, 10)
+        card.addView(valueText, matchWidth())
+
+        return Pair(card, valueText)
     }
 
     private fun checkPermissionAndStart() {
@@ -184,8 +324,8 @@ class MainActivity : Activity(), LocationListener {
         lastMovingTime = 0L
 
         speedText.text = "0.0"
-        distanceText.text = "Jarak: 0.00 km"
-        averageText.text = "Rata-rata: 0.0 km/jam"
+        distanceText.text = "0.00 km"
+        averageText.text = "0.0 km/jam"
 
         try {
             locationManager.requestLocationUpdates(
@@ -197,8 +337,9 @@ class MainActivity : Activity(), LocationListener {
             )
 
             tracking = true
-            startButton.text = "BERHENTI"
-            statusText.text = "Mencari sinyal GPS..."
+            startButton.text = "■  BERHENTI"
+            statusText.text = "●  MENCARI SINYAL GPS"
+            startButton.setBackgroundColor(Color.rgb(192, 57, 43))
 
         } catch (e: SecurityException) {
             statusText.text = "Izin GPS belum diberikan"
@@ -214,7 +355,6 @@ class MainActivity : Activity(), LocationListener {
         if (previous != null) {
             val distance = previous.distanceTo(location)
 
-            // Abaikan perpindahan yang terlalu besar atau tidak wajar.
             if (
                 distance in 0f..100f &&
                 location.accuracy <= 30f &&
@@ -222,7 +362,6 @@ class MainActivity : Activity(), LocationListener {
             ) {
                 totalDistance += distance
 
-                // Hitung waktu bergerak ketika kecepatan minimal 1 km/jam.
                 val speedKmh = if (location.hasSpeed()) {
                     location.speed * 3.6f
                 } else if (distance > 0f) {
@@ -256,7 +395,7 @@ class MainActivity : Activity(), LocationListener {
 
         distanceText.text = String.format(
             Locale.getDefault(),
-            "Jarak: %.2f km",
+            "%.2f km",
             totalDistance / 1000f
         )
 
@@ -269,23 +408,26 @@ class MainActivity : Activity(), LocationListener {
 
         averageText.text = String.format(
             Locale.getDefault(),
-            "Rata-rata: %.1f km/jam",
+            "%.1f km/jam",
             averageSpeed
         )
 
         statusText.text = String.format(
             Locale.getDefault(),
-            "GPS aktif • Akurasi %.0f meter",
+            "●  GPS AKTIF • AKURASI %.0f M",
             location.accuracy
         )
+        statusText.setTextColor(green)
     }
 
     private fun stopTracking() {
         locationManager.removeUpdates(this)
         tracking = false
-        startButton.text = "MULAI BERSEPEDA"
+        startButton.text = "▶  MULAI BERSEPEDA"
+        startButton.setBackgroundColor(green)
         speedText.text = "0.0"
-        statusText.text = "Perjalanan selesai"
+        statusText.text = "●  PERJALANAN SELESAI"
+        statusText.setTextColor(muted)
 
         Toast.makeText(
             this,
@@ -296,13 +438,14 @@ class MainActivity : Activity(), LocationListener {
 
     override fun onProviderDisabled(provider: String) {
         if (provider == LocationManager.GPS_PROVIDER) {
-            statusText.text = "GPS dimatikan"
+            statusText.text = "GPS DIMATIKAN"
+            statusText.setTextColor(Color.RED)
         }
     }
 
     override fun onProviderEnabled(provider: String) {
         if (provider == LocationManager.GPS_PROVIDER && tracking) {
-            statusText.text = "GPS aktif, mencari lokasi..."
+            statusText.text = "●  GPS AKTIF, MENCARI LOKASI"
         }
     }
 
@@ -316,7 +459,7 @@ class MainActivity : Activity(), LocationListener {
 
     override fun onPause() {
         super.onPause()
-        // Versi awal ini belum mendukung perekaman saat aplikasi ditutup.
+        // Perekaman saat layar mati akan dikembangkan pada tahap berikutnya.
     }
 
     override fun onDestroy() {
@@ -342,3 +485,4 @@ class MainActivity : Activity(), LocationListener {
         )
     }
 }
+
