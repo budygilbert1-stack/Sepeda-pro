@@ -391,8 +391,7 @@ class MainActivity : Activity(), LocationListener {
             }
         )
 
-        val info = TextView(this)
-        info.text = "Auto Pause < 3 km/j selama 5 detik. Auto Resume > 5 km/j selama 3 detik."
+        val info = TextView(t9his)
         info.textSize = 11f
         info.setTextColor(muted)
         info.gravity = Gravity.CENTER
