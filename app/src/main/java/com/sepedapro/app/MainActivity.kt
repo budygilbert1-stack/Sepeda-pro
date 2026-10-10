@@ -65,13 +65,14 @@ class MainActivity : Activity(), LocationListener {
         root.setPadding(dp(20), dp(18), dp(20), dp(12))
         root.gravity = Gravity.CENTER_HORIZONTAL
 
-        scrollView.addView(
-            root,
-            ScrollView.LayoutParams(
-                ScrollView.LayoutParams.MATCH_PARENT,
-                ScrollView.LayoutParams.WRAP_CONTENT
-            )
-        )
+
+scrollView.addView(
+    root,
+    android.widget.ScrollView.LayoutParams(
+        android.widget.ScrollView.LayoutParams.MATCH_PARENT,
+        android.widget.ScrollView.LayoutParams.WRAP_CONTENT
+    )
+)
 
         // JUDUL APLIKASI
         val title = TextView(this)
