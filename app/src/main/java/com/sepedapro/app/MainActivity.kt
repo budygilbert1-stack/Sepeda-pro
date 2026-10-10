@@ -47,6 +47,8 @@ class MainActivity : Activity(), LocationListener {
     private var currentSpeedKmh = 0.0
     private var maxSpeedKmh = 0.0
     private var isMoving = false
+    private var belowThresholdSince = 0L
+    private var aboveThresholdSince = 0L
 
     private val timerHandler = Handler(Looper.getMainLooper())
 
@@ -99,7 +101,7 @@ class MainActivity : Activity(), LocationListener {
 
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
-        root.setPadding(dp(20), dp(18), dp(20), dp(12))
+        root.setPadding(dp(12), dp(8), dp(12), dp(8))
         root.gravity = Gravity.CENTER_HORIZONTAL
 
         scrollView.addView(
@@ -142,7 +144,7 @@ class MainActivity : Activity(), LocationListener {
         // KARTU KECEPATAN
         val speedCard = createCard()
         speedCard.gravity = Gravity.CENTER
-        speedCard.setPadding(dp(12), dp(24), dp(12), dp(24))
+        speedCard.setPadding(dp(8), dp(12), dp(8), dp(12))
 
         speedCard.addView(
             createLabel("KECEPATAN SAAT INI"),
@@ -157,7 +159,7 @@ class MainActivity : Activity(), LocationListener {
 
         speedText = TextView(this)
         speedText.text = "0.0"
-        speedText.textSize = 66f
+        speedText.textSize = 60f
         speedText.setTextColor(green)
         speedText.typeface = Typeface.DEFAULT_BOLD
         speedText.gravity = Gravity.CENTER
@@ -189,7 +191,7 @@ class MainActivity : Activity(), LocationListener {
         root.addView(
             speedCard,
             matchWrap().apply {
-                bottomMargin = dp(16)
+                bottomMargin = dp(8)
             }
         )
 
@@ -200,12 +202,12 @@ class MainActivity : Activity(), LocationListener {
         statsRow.weightSum = 2f
 
         val distanceCard = createCard()
-        distanceCard.setPadding(dp(8), dp(16), dp(8), dp(16))
+        distanceCard.setPadding(dp(6), dp(8), dp(6), dp(8))
 
         distanceCard.addView(
             createLabel("JARAK TEMPUH"),
             matchWrap().apply {
-                bottomMargin = dp(12)
+                bottomMargin = dp(6)
             }
         )
 
@@ -214,13 +216,13 @@ class MainActivity : Activity(), LocationListener {
 
         statsRow.addView(
             distanceCard,
-            LinearLayout.LayoutParams(0, dp(110), 1f).apply {
+            LinearLayout.LayoutParams(0, dp(76), 1f).apply {
                 marginEnd = dp(6)
             }
         )
 
         val averageCard = createCard()
-        averageCard.setPadding(dp(8), dp(16), dp(8), dp(16))
+        averageCard.setPadding(dp(6), dp(8), dp(6), dp(8))
 
         averageCard.addView(
             createLabel("RATA-RATA"),
@@ -246,25 +248,49 @@ class MainActivity : Activity(), LocationListener {
             }
         )
 
-        // KARTU DURASI
-        val durationCard = createCard()
-        durationCard.setPadding(dp(10), dp(14), dp(10), dp(14))
+        // KARTU DURASI DAN KECEPATAN MAKSIMUM
+        val durationRow = LinearLayout(this)
+        durationRow.orientation = LinearLayout.HORIZONTAL
+        durationRow.gravity = Gravity.CENTER
+        durationRow.weightSum = 2f
 
+        val durationCard = createCard()
+        durationCard.setPadding(dp(6), dp(8), dp(6), dp(8))
         durationCard.addView(
-            createLabel("DURASI PERJALANAN"),
-            matchWrap().apply {
-                bottomMargin = dp(8)
+            createLabel("DURASI"),
+            matchWrap().apply { bottomMargin = dp(6) }
+        )
+        durationText = createStatValue("00:00:00")
+        durationText.textSize = 17f
+        durationCard.addView(durationText, matchWrap())
+        durationRow.addView(
+            durationCard,
+            LinearLayout.LayoutParams(0, dp(76), 1f).apply {
+                marginEnd = dp(6)
             }
         )
 
-        durationText = createStatValue("00:00:00")
-        durationText.textSize = 25f
-        durationCard.addView(durationText, matchWrap())
+        val maxSpeedCard = createCard()
+        maxSpeedCard.setPadding(dp(6), dp(8), dp(6), dp(8))
+        maxSpeedCard.addView(
+            createLabel("KECEPATAN MAKS."),
+            matchWrap().apply { bottomMargin = dp(6) }
+        )
+        maxSpeedText = createStatValue("0.0 km/j")
+        maxSpeedText.textSize = 19f
+        maxSpeedText.setTextColor(green)
+        maxSpeedCard.addView(maxSpeedText, matchWrap())
+        durationRow.addView(
+            maxSpeedCard,
+            LinearLayout.LayoutParams(0, dp(76), 1f).apply {
+                marginStart = dp(6)
+            }
+        )
 
         root.addView(
-            durationCard,
+            durationRow,
             matchWrap().apply {
-                bottomMargin = dp(12)
+                bottomMargin = dp(6)
             }
         )
 
@@ -275,7 +301,7 @@ class MainActivity : Activity(), LocationListener {
         timeRow.weightSum = 2f
 
         val movingCard = createCard()
-        movingCard.setPadding(dp(6), dp(14), dp(6), dp(14))
+        movingCard.setPadding(dp(6), dp(8), dp(6), dp(8))
 
         movingCard.addView(
             createLabel("WAKTU BERGERAK"),
@@ -290,13 +316,13 @@ class MainActivity : Activity(), LocationListener {
 
         timeRow.addView(
             movingCard,
-            LinearLayout.LayoutParams(0, dp(100), 1f).apply {
+            LinearLayout.LayoutParams(0, dp(76), 1f).apply {
                 marginEnd = dp(6)
             }
         )
 
         val stoppedCard = createCard()
-        stoppedCard.setPadding(dp(6), dp(14), dp(6), dp(14))
+        stoppedCard.setPadding(dp(6), dp(8), dp(6), dp(8))
 
         stoppedCard.addView(
             createLabel("WAKTU BERHENTI"),
@@ -323,29 +349,6 @@ class MainActivity : Activity(), LocationListener {
             }
         )
 
-        // KARTU KECEPATAN MAKSIMUM
-        val maxSpeedCard = createCard()
-        maxSpeedCard.setPadding(dp(10), dp(14), dp(10), dp(14))
-
-        maxSpeedCard.addView(
-            createLabel("KECEPATAN MAKSIMUM"),
-            matchWrap().apply {
-                bottomMargin = dp(8)
-            }
-        )
-
-        maxSpeedText = createStatValue("0.0 km/j")
-        maxSpeedText.textSize = 23f
-        maxSpeedText.setTextColor(green)
-        maxSpeedCard.addView(maxSpeedText, matchWrap())
-
-        root.addView(
-            maxSpeedCard,
-            matchWrap().apply {
-                bottomMargin = dp(18)
-            }
-        )
-
         // STATUS GPS
         statusText = TextView(this)
         statusText.text = "●  GPS SIAP DIGUNAKAN"
@@ -369,8 +372,8 @@ class MainActivity : Activity(), LocationListener {
         startButton.typeface = Typeface.DEFAULT_BOLD
         startButton.isAllCaps = false
         startButton.gravity = Gravity.CENTER
-        startButton.minHeight = dp(64)
-        startButton.minimumHeight = dp(64)
+        startButton.minHeight = dp(48)
+        startButton.minimumHeight = dp(48)
         startButton.setPadding(dp(12), dp(12), dp(12), dp(12))
         startButton.setBackgroundColor(green)
 
@@ -525,6 +528,8 @@ class MainActivity : Activity(), LocationListener {
         maxSpeedKmh = 0.0
         currentSpeedKmh = 0.0
         isMoving = false
+        belowThresholdSince = 0L
+        aboveThresholdSince = 0L
 
         lastLocation = null
 
@@ -675,8 +680,28 @@ class MainActivity : Activity(), LocationListener {
 
         currentSpeedKmh = (speedMps * 3.6).coerceAtLeast(0.0)
 
-        // Gunakan ambang 1 m/s untuk membedakan bergerak dan berhenti.
-        isMoving = speedMps >= 1.0
+        // Auto Pause: di bawah 3 km/jam selama 5 detik.
+        // Auto Resume: di atas 5 km/jam selama 3 detik.
+        val movementCheckTime = System.currentTimeMillis()
+
+        if (currentSpeedKmh < 3.0) {
+            aboveThresholdSince = 0L
+            if (belowThresholdSince == 0L) belowThresholdSince = movementCheckTime
+            if (isMoving && movementCheckTime - belowThresholdSince >= 5000L) {
+                isMoving = false
+                belowThresholdSince = 0L
+            }
+        } else if (currentSpeedKmh > 5.0) {
+            belowThresholdSince = 0L
+            if (aboveThresholdSince == 0L) aboveThresholdSince = movementCheckTime
+            if (!isMoving && movementCheckTime - aboveThresholdSince >= 3000L) {
+                isMoving = true
+                aboveThresholdSince = 0L
+            }
+        } else {
+            belowThresholdSince = 0L
+            aboveThresholdSince = 0L
+        }
 
         if (currentSpeedKmh > maxSpeedKmh) {
             maxSpeedKmh = currentSpeedKmh
@@ -708,8 +733,13 @@ class MainActivity : Activity(), LocationListener {
 
         updateTimeStatistics()
 
-        statusText.text = "●  GPS AKTIF · MEREKAM PERJALANAN"
-        statusText.setTextColor(green)
+        if (isMoving) {
+            statusText.text = "●  GPS AKTIF · MEREKAM PERJALANAN"
+            statusText.setTextColor(green)
+        } else {
+            statusText.text = "⏸  JEDA OTOMATIS"
+            statusText.setTextColor(orange)
+        }
     }
 
     override fun onProviderEnabled(provider: String) {
