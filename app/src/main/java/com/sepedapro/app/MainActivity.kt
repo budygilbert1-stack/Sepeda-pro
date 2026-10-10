@@ -9,6 +9,11 @@ import android.graphics.Typeface
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.media.AudioManager
+import android.media.ToneGenerator
+import android.content.SharedPreferences
+import android.widget.EditText
+
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -61,6 +66,16 @@ class MainActivity : Activity(), LocationListener {
 
     private var currentSpeedKmh = 0.0
     private var maxSpeedKmh = 0.0
+    private var minimumSpeedKmh = 20.0
+    private var lowSpeedSince = 0L
+    private var lastWarningTime = 0L
+    private var warningEnabled = true
+
+    private lateinit var warningTone: ToneGenerator
+    private lateinit var warningPreferences: SharedPreferences
+
+
+
 
     private var belowThresholdSince = 0L
     private var aboveThresholdSince = 0L
@@ -85,12 +100,9 @@ class MainActivity : Activity(), LocationListener {
 
             totalElapsedTime = (now - startTime) / 1000L
 
-            if (isMoving) {
-                totalMovingTime += delta
-            }
 
-            lastTickTime = now
-            updateStatistics()
+        updateStatistics()
+
 
             timerHandler.postDelayed(this, 1000L)
         }
@@ -98,6 +110,26 @@ class MainActivity : Activity(), LocationListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        warningPreferences = getSharedPreferences(
+            "sepeda_pro_settings",
+            MODE_PRIVATE
+        )
+
+        minimumSpeedKmh = warningPreferences.getFloat(
+            "minimum_speed",
+            20.0f
+        ).toDouble()
+
+        warningEnabled = warningPreferences.getBoolean(
+            "warning_enabled",
+            true
+        )
+
+        warningTone = ToneGenerator(
+            AudioManager.STREAM_NOTIFICATION,
+            80
+        )
 
         Configuration.getInstance().userAgentValue = packageName
 
@@ -108,6 +140,67 @@ class MainActivity : Activity(), LocationListener {
         updateStatistics()
     }
 
+
+
+
+    private fun showSpeedSettings() {
+        val input = EditText(this)
+        input.inputType =
+            android.text.InputType.TYPE_CLASS_NUMBER or
+            android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+        input.setText(minimumSpeedKmh.toString())
+        input.selectAll()
+        input.hint = "Contoh: 20"
+
+        val container = LinearLayout(this)
+        container.orientation = LinearLayout.VERTICAL
+        container.setPadding(dp(20), dp(8), dp(20), dp(8))
+
+        val speedLabel = TextView(this)
+        speedLabel.text = "Batas kecepatan minimum (km/jam)"
+        speedLabel.setTextColor(white)
+        container.addView(speedLabel)
+        container.addView(input)
+
+        val soundCheck = android.widget.CheckBox(this)
+        soundCheck.text = "Aktifkan bunyi peringatan"
+        soundCheck.setTextColor(white)
+        soundCheck.isChecked = warningEnabled
+        container.addView(soundCheck)
+
+        AlertDialog.Builder(this)
+            .setTitle("Pengaturan Kecepatan")
+            .setView(container)
+            .setPositiveButton("SIMPAN") { _, _ ->
+                val newSpeed = input.text.toString().toDoubleOrNull()
+
+                if (newSpeed == null || newSpeed <= 0.0 || newSpeed > 100.0) {
+                    Toast.makeText(
+                        this,
+                        "Masukkan kecepatan antara 0,1 dan 100 km/jam",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else {
+                    minimumSpeedKmh = newSpeed
+                    warningEnabled = soundCheck.isChecked
+
+                    warningPreferences.edit()
+                        .putFloat("minimum_speed", newSpeed.toFloat())
+                        .putBoolean("warning_enabled", warningEnabled)
+                        .apply()
+
+                    lowSpeedSince = 0L
+
+                    Toast.makeText(
+                        this,
+                        "Pengaturan kecepatan berhasil disimpan",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+            .setNegativeButton("BATAL", null)
+            .show()
+    }
     private fun createDashboard() {
         val scroll = ScrollView(this)
         scroll.setBackgroundColor(background)
@@ -409,6 +502,20 @@ class MainActivity : Activity(), LocationListener {
             }
         )
 
+        val speedSettingsButton = Button(this)
+        speedSettingsButton.text = "PENGATURAN KECEPATAN"
+        speedSettingsButton.setOnClickListener {
+            showSpeedSettings()
+        }
+        root.addView(
+            speedSettingsButton,
+            matchWrap().apply {
+                bottomMargin = dp(8)
+            }
+        )
+
+
+
         val info = TextView(this)
         info.textSize = 11f
         info.setTextColor(muted)
@@ -557,6 +664,8 @@ class MainActivity : Activity(), LocationListener {
         totalElapsedTime = 0L
         currentSpeedKmh = 0.0
         maxSpeedKmh = 0.0
+        lowSpeedSince = 0L
+        lastWarningTime = 0L
 
         isMoving = false
         belowThresholdSince = 0L
@@ -754,9 +863,34 @@ class MainActivity : Activity(), LocationListener {
             statusText.setTextColor(orange)
         }
 
+        checkSpeedWarning(now)
         updateStatistics()
     }
 
+
+    private fun checkSpeedWarning(now: Long) {
+        if (!tracking || !warningEnabled || !isMoving) {
+            lowSpeedSince = 0L
+            return
+        }
+
+        if (currentSpeedKmh >= minimumSpeedKmh) {
+            lowSpeedSince = 0L
+            return
+        }
+
+        if (lowSpeedSince == 0L) {
+            lowSpeedSince = now
+            return
+        }
+
+        if (now - lowSpeedSince >= 3000L &&
+            (lastWarningTime == 0L || now - lastWarningTime >= 10000L)
+        ) {
+            warningTone.startTone(ToneGenerator.TONE_PROP_BEEP, 300)
+            lastWarningTime = now
+        }
+    }
 
     private fun saveTripHistory() {
         if (totalElapsedTime <= 0L && totalDistance <= 0.0) {
@@ -955,6 +1089,10 @@ class MainActivity : Activity(), LocationListener {
                 locationManager.removeUpdates(this)
             } catch (_: SecurityException) {
             }
+        }
+
+        if (::warningTone.isInitialized) {
+            warningTone.release()
         }
 
         super.onDestroy()
