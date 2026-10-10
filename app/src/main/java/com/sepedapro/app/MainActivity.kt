@@ -391,7 +391,7 @@ class MainActivity : Activity(), LocationListener {
             }
         )
 
-        val info = TextView(t9his)
+        val info = TextView(this)
         info.textSize = 11f
         info.setTextColor(muted)
         info.gravity = Gravity.CENTER
