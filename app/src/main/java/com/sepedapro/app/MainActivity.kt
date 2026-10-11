@@ -276,6 +276,8 @@ class MainActivity : Activity(), LocationListener {
         map = MapView(this)
         map.setTileSource(TileSourceFactory.MAPNIK)
         map.setMultiTouchControls(true)
+        map.isTilesScaledToDpi = true
+        map.isTilesScaledToDpi = true
         map.controller.setZoom(15.0)
         map.controller.setCenter(GeoPoint(-6.9175, 107.6191))
 
@@ -310,7 +312,7 @@ class MainActivity : Activity(), LocationListener {
 
         speedText = TextView(this)
         speedText.text = "0.0"
-        speedText.textSize = 60f
+        speedText.textSize = 120f
         speedText.typeface = Typeface.DEFAULT_BOLD
         speedText.setTextColor(white)
         speedText.gravity = Gravity.CENTER
@@ -659,7 +661,6 @@ class MainActivity : Activity(), LocationListener {
         speedRoot.addView(speedCard, matchWrap())
         speedRoot.addView(distanceAverageRow, matchWrap())
         speedRoot.addView(durationMaxRow, matchWrap())
-        speedRoot.addView(statusText, matchWrap())
         speedRoot.addView(startButton, matchWrap())
         speedRoot.addView(pauseButton, matchWrap())
         speedRoot.addView(historyButton, matchWrap())
@@ -685,7 +686,7 @@ class MainActivity : Activity(), LocationListener {
 
         mapSpeedText = TextView(this)
         mapSpeedText.text = "0.0 km/jam"
-        mapSpeedText.textSize = 24f
+        mapSpeedText.textSize = 30f
         mapSpeedText.typeface = Typeface.DEFAULT_BOLD
         mapSpeedText.setTextColor(white)
         mapSpeedText.setBackgroundColor(cardColor)
@@ -723,10 +724,43 @@ class MainActivity : Activity(), LocationListener {
 
         mapFrame.visibility = View.GONE
 
+        var swipeStartX = 0f
+        var swipeStartY = 0f
+
+        pages.setOnTouchListener { _, event ->
+            when (event.action) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    swipeStartX = event.x
+                    swipeStartY = event.y
+                    true
+                }
+                android.view.MotionEvent.ACTION_UP -> {
+                    val dx = event.x - swipeStartX
+                    val dy = event.y - swipeStartY
+
+                    if (kotlin.math.abs(dx) > dp(70) &&
+                        kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.3f
+                    ) {
+                        if (dx < 0) {
+                            speedScroll.visibility = View.GONE
+                            mapFrame.visibility = View.VISIBLE
+                            map.invalidate()
+                        } else {
+                            mapFrame.visibility = View.GONE
+                            speedScroll.visibility = View.VISIBLE
+                        }
+                    }
+                    true
+                }
+                else -> true
+            }
+        }
+
         speedTab.setOnClickListener {
             speedScroll.visibility = View.VISIBLE
             mapFrame.visibility = View.GONE
         }
+
 
         mapTab.setOnClickListener {
             speedScroll.visibility = View.GONE
@@ -899,6 +933,16 @@ class MainActivity : Activity(), LocationListener {
         statusText.text = "MENCARI SINYAL GPS..."
         statusText.setTextColor(green)
 
+        gpsIndicator.setTextColor(Color.YELLOW)
+        gpsIndicator.clearAnimation()
+        gpsIndicator.startAnimation(
+            AlphaAnimation(0.25f, 1.0f).apply {
+                duration = 650L
+                repeatMode = android.view.animation.Animation.REVERSE
+                repeatCount = android.view.animation.Animation.INFINITE
+            }
+        )
+
         timerHandler.removeCallbacks(timerRunnable)
         timerHandler.postDelayed(timerRunnable, 1000L)
 
@@ -1069,8 +1113,8 @@ class MainActivity : Activity(), LocationListener {
         }
 
         if (::gpsIndicator.isInitialized) {
-            gpsIndicator.setTextColor(green)
             gpsIndicator.clearAnimation()
+            gpsIndicator.setTextColor(green)
         }
 
         if (isMoving) {
@@ -1285,13 +1329,33 @@ class MainActivity : Activity(), LocationListener {
     }
 
     override fun onProviderEnabled(provider: String) {
-        if (tracking) {
-            statusText.text = "GPS AKTIF"
-            statusText.setTextColor(green)
+        if (provider != LocationManager.GPS_PROVIDER) return
+
+        if (::gpsIndicator.isInitialized) {
+            gpsIndicator.setTextColor(Color.YELLOW)
+            gpsIndicator.clearAnimation()
+
+            if (tracking) {
+                gpsIndicator.startAnimation(
+                    AlphaAnimation(0.25f, 1.0f).apply {
+                        duration = 650L
+                        repeatMode = android.view.animation.Animation.REVERSE
+                        repeatCount = android.view.animation.Animation.INFINITE
+                    }
+                )
+                statusText.text = "MENCARI SINYAL GPS..."
+            }
         }
     }
 
     override fun onProviderDisabled(provider: String) {
+        if (provider != LocationManager.GPS_PROVIDER) return
+
+        if (::gpsIndicator.isInitialized) {
+            gpsIndicator.clearAnimation()
+            gpsIndicator.setTextColor(Color.RED)
+        }
+
         if (tracking) {
             statusText.text = "GPS TERPUTUS"
             statusText.setTextColor(orange)
