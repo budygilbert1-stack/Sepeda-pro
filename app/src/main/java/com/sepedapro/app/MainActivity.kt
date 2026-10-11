@@ -107,20 +107,21 @@ class MainActivity : Activity(), LocationListener {
             lastTickTime = now
 
             // Statistik durasi utama menggunakan waktu bersepeda.
-            totalElapsedTime = totalMovingTime
+            totalElapsedTime += delta
 
-            // Periksa jeda otomatis berdasarkan waktu sejak kecepatan nol.
-            if (currentSpeedKmh < 0.05 &&
+            // Jeda otomatis jika kecepatan <= 5 km/jam selama 5 detik.
+            if (
                 isMoving &&
                 belowThresholdSince > 0L &&
                 now - belowThresholdSince >= 5000L
             ) {
                 isMoving = false
-                belowThresholdSince = 0L
                 aboveThresholdSince = 0L
                 statusText.text = "JEDA OTOMATIS"
                 statusText.setTextColor(orange)
             }
+
+
 
             updateStatistics()
             checkSpeedWarning(now)
@@ -306,7 +307,7 @@ class MainActivity : Activity(), LocationListener {
         speedText.text = "0.0"
         speedText.textSize = 60f
         speedText.typeface = Typeface.DEFAULT_BOLD
-        speedText.setTextColor(green)
+        speedText.setTextColor(white)
         speedText.gravity = Gravity.CENTER
 
         speedCard.addView(speedText, matchWrap())
@@ -329,7 +330,7 @@ class MainActivity : Activity(), LocationListener {
         val speedUnit = TextView(this)
         speedUnit.text = "km/jam"
         speedUnit.textSize = 13f
-        speedUnit.setTextColor(muted)
+        speedUnit.setTextColor(white)
         speedUnit.gravity = Gravity.CENTER
         speedCard.addView(speedUnit, matchWrap())
 
@@ -389,56 +390,6 @@ class MainActivity : Activity(), LocationListener {
             }
         )
 
-        val durationCard = createCard()
-        durationCard.setPadding(dp(4), dp(8), dp(4), dp(8))
-        durationCard.addView(
-            createLabel("DURASI TOTAL"),
-            matchWrap().apply {
-                bottomMargin = dp(5)
-            }
-        )
-
-        durationText = createStatValue("00:00:00")
-        durationText.textSize = 17f
-        durationCard.addView(durationText, matchWrap())
-
-        val stoppedCard = createCard()
-        stoppedCard.setPadding(dp(4), dp(8), dp(4), dp(8))
-        stoppedCard.addView(
-            createLabel("WAKTU BERHENTI"),
-            matchWrap().apply {
-                bottomMargin = dp(5)
-            }
-        )
-
-        stoppedText = createStatValue("00:00:00")
-        stoppedText.textSize = 17f
-        stoppedCard.addView(stoppedText, matchWrap())
-
-        val totalStoppedRow = LinearLayout(this)
-        totalStoppedRow.orientation = LinearLayout.HORIZONTAL
-        totalStoppedRow.weightSum = 2f
-
-        totalStoppedRow.addView(
-            durationCard,
-            LinearLayout.LayoutParams(0, dp(76), 1f).apply {
-                marginEnd = dp(5)
-            }
-        )
-
-        totalStoppedRow.addView(
-            stoppedCard,
-            LinearLayout.LayoutParams(0, dp(76), 1f).apply {
-                marginStart = dp(5)
-            }
-        )
-
-        root.addView(
-            totalStoppedRow,
-            matchWrap().apply {
-                bottomMargin = dp(8)
-            }
-        )
 
         val durationMaxRow = LinearLayout(this)
         durationMaxRow.orientation = LinearLayout.HORIZONTAL
@@ -453,6 +404,8 @@ class MainActivity : Activity(), LocationListener {
             }
         )
 
+        durationText = createStatValue("00:00:00")
+        stoppedText = createStatValue("00:00:00")
         movingText = createStatValue("00:00:00")
         movingText.textSize = 17f
         movingCard.addView(movingText, matchWrap())
@@ -474,7 +427,7 @@ class MainActivity : Activity(), LocationListener {
         )
 
         maxSpeedText = createStatValue("0.0 km/j")
-        maxSpeedText.setTextColor(green)
+        maxSpeedText.setTextColor(white)
         maxCard.addView(maxSpeedText, matchWrap())
 
         durationMaxRow.addView(
@@ -587,7 +540,7 @@ class MainActivity : Activity(), LocationListener {
         return TextView(this).apply {
             this.text = text
             textSize = 11f
-            setTextColor(muted)
+            setTextColor(white)
             gravity = Gravity.CENTER
             typeface = Typeface.DEFAULT_BOLD
         }
@@ -769,7 +722,7 @@ class MainActivity : Activity(), LocationListener {
             }
 
             lastTickTime = now
-            totalElapsedTime = totalMovingTime
+            totalElapsedTime += delta
         }
 
         if (tracking) {
@@ -855,16 +808,11 @@ class MainActivity : Activity(), LocationListener {
 
         val now = System.currentTimeMillis()
 
-        if (currentSpeedKmh < 0.05) {
+        if (currentSpeedKmh <= 5.0) {
             aboveThresholdSince = 0L
 
             if (belowThresholdSince == 0L) {
                 belowThresholdSince = now
-            }
-
-            if (isMoving && now - belowThresholdSince >= 5000L) {
-                isMoving = false
-                belowThresholdSince = 0L
             }
         } else {
             belowThresholdSince = 0L
@@ -872,9 +820,10 @@ class MainActivity : Activity(), LocationListener {
 
             if (!isMoving) {
                 isMoving = true
+                statusText.text = "GPS AKTIF · MEREKAM PERJALANAN"
+                statusText.setTextColor(green)
             }
         }
-
         if (currentSpeedKmh > maxSpeedKmh) {
             maxSpeedKmh = currentSpeedKmh
         }
@@ -968,6 +917,7 @@ class MainActivity : Activity(), LocationListener {
             trip.put("distance", totalDistance)
             trip.put("duration", totalElapsedTime)
             trip.put("moving", totalMovingTime)
+            trip.put("stopped", (totalElapsedTime - totalMovingTime).coerceAtLeast(0L))
             trip.put("maxSpeed", maxSpeedKmh)
 
             val average = if (totalMovingTime > 0L) {
@@ -1059,6 +1009,10 @@ class MainActivity : Activity(), LocationListener {
         val distance = trip.optDouble("distance", 0.0) / 1000.0
         val duration = trip.optLong("duration", 0L)
         val moving = trip.optLong("moving", 0L)
+        val stopped = trip.optLong(
+            "stopped",
+            (duration - moving).coerceAtLeast(0L)
+        )
         val average = trip.optDouble("average", 0.0)
         val maxSpeed = trip.optDouble("maxSpeed", 0.0)
         val route = trip.optJSONArray("route") ?: JSONArray()
@@ -1067,8 +1021,9 @@ class MainActivity : Activity(), LocationListener {
             java.util.Locale.US,
             "Tanggal: %s\n" +
                 "Jarak: %.2f km\n" +
-                "Durasi: %s\n" +
-                "Waktu bergerak: %s\n" +
+                "Durasi total: %s\n" +
+                "Waktu bersepeda: %s\n" +
+                "Waktu berhenti: %s\n" +
                 "Kecepatan rata-rata: %.1f km/jam\n" +
                 "Kecepatan maksimum: %.1f km/jam\n" +
                 "Titik rute tersimpan: %d",
@@ -1076,6 +1031,7 @@ class MainActivity : Activity(), LocationListener {
             distance,
             formatDuration(duration),
             formatDuration(moving),
+            formatDuration(stopped),
             average,
             maxSpeed,
             route.length()
