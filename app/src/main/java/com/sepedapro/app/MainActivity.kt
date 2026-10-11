@@ -389,6 +389,57 @@ class MainActivity : Activity(), LocationListener {
             }
         )
 
+        val durationCard = createCard()
+        durationCard.setPadding(dp(4), dp(8), dp(4), dp(8))
+        durationCard.addView(
+            createLabel("DURASI TOTAL"),
+            matchWrap().apply {
+                bottomMargin = dp(5)
+            }
+        )
+
+        durationText = createStatValue("00:00:00")
+        durationText.textSize = 17f
+        durationCard.addView(durationText, matchWrap())
+
+        val stoppedCard = createCard()
+        stoppedCard.setPadding(dp(4), dp(8), dp(4), dp(8))
+        stoppedCard.addView(
+            createLabel("WAKTU BERHENTI"),
+            matchWrap().apply {
+                bottomMargin = dp(5)
+            }
+        )
+
+        stoppedText = createStatValue("00:00:00")
+        stoppedText.textSize = 17f
+        stoppedCard.addView(stoppedText, matchWrap())
+
+        val totalStoppedRow = LinearLayout(this)
+        totalStoppedRow.orientation = LinearLayout.HORIZONTAL
+        totalStoppedRow.weightSum = 2f
+
+        totalStoppedRow.addView(
+            durationCard,
+            LinearLayout.LayoutParams(0, dp(76), 1f).apply {
+                marginEnd = dp(5)
+            }
+        )
+
+        totalStoppedRow.addView(
+            stoppedCard,
+            LinearLayout.LayoutParams(0, dp(76), 1f).apply {
+                marginStart = dp(5)
+            }
+        )
+
+        root.addView(
+            totalStoppedRow,
+            matchWrap().apply {
+                bottomMargin = dp(8)
+            }
+        )
+
         val durationMaxRow = LinearLayout(this)
         durationMaxRow.orientation = LinearLayout.HORIZONTAL
         durationMaxRow.weightSum = 2f
