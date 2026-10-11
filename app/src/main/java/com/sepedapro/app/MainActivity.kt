@@ -19,6 +19,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.View
+import android.view.animation.AlphaAnimation
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -44,6 +45,7 @@ class MainActivity : Activity(), LocationListener {
     private lateinit var bikeMarker: Marker
 
     private lateinit var speedText: TextView
+    private lateinit var speedAlertText: TextView
     private lateinit var distanceText: TextView
     private lateinit var averageText: TextView
     private lateinit var durationText: TextView
@@ -98,11 +100,30 @@ class MainActivity : Activity(), LocationListener {
             val delta = ((now - lastTickTime) / 1000L)
                 .coerceAtLeast(0L)
 
-            totalElapsedTime = (now - startTime) / 1000L
+            if (isMoving) {
+                totalMovingTime += delta
+            }
 
+            lastTickTime = now
 
-        updateStatistics()
+            // Statistik durasi utama menggunakan waktu bersepeda.
+            totalElapsedTime = totalMovingTime
 
+            // Periksa jeda otomatis berdasarkan waktu sejak kecepatan nol.
+            if (currentSpeedKmh < 0.05 &&
+                isMoving &&
+                belowThresholdSince > 0L &&
+                now - belowThresholdSince >= 5000L
+            ) {
+                isMoving = false
+                belowThresholdSince = 0L
+                aboveThresholdSince = 0L
+                statusText.text = "JEDA OTOMATIS"
+                statusText.setTextColor(orange)
+            }
+
+            updateStatistics()
+            checkSpeedWarning(now)
 
             timerHandler.postDelayed(this, 1000L)
         }
@@ -127,8 +148,8 @@ class MainActivity : Activity(), LocationListener {
         )
 
         warningTone = ToneGenerator(
-            AudioManager.STREAM_NOTIFICATION,
-            80
+            AudioManager.STREAM_MUSIC,
+            100
         )
 
         Configuration.getInstance().userAgentValue = packageName
@@ -157,7 +178,7 @@ class MainActivity : Activity(), LocationListener {
         container.setPadding(dp(20), dp(8), dp(20), dp(8))
 
         val speedLabel = TextView(this)
-        speedLabel.text = "Batas kecepatan minimum (km/jam)"
+        speedLabel.text = "Atur Kecepatan Minimum (km/jam)"
         speedLabel.setTextColor(white)
         container.addView(speedLabel)
         container.addView(input)
@@ -169,7 +190,7 @@ class MainActivity : Activity(), LocationListener {
         container.addView(soundCheck)
 
         AlertDialog.Builder(this)
-            .setTitle("Pengaturan Kecepatan")
+            .setTitle("Atur Kecepatan Minimum")
             .setView(container)
             .setPositiveButton("SIMPAN") { _, _ ->
                 val newSpeed = input.text.toString().toDoubleOrNull()
@@ -290,6 +311,21 @@ class MainActivity : Activity(), LocationListener {
 
         speedCard.addView(speedText, matchWrap())
 
+        speedAlertText = TextView(this)
+        speedAlertText.text = "❗ NAIKAN KECEPATAN !!!"
+        speedAlertText.textSize = 18f
+        speedAlertText.typeface = Typeface.DEFAULT_BOLD
+        speedAlertText.setTextColor(Color.RED)
+        speedAlertText.gravity = Gravity.CENTER
+        speedAlertText.visibility = View.GONE
+        speedCard.addView(
+            speedAlertText,
+            matchWrap().apply {
+                topMargin = dp(6)
+                bottomMargin = dp(6)
+            }
+        )
+
         val speedUnit = TextView(this)
         speedUnit.text = "km/jam"
         speedUnit.textSize = 13f
@@ -357,21 +393,21 @@ class MainActivity : Activity(), LocationListener {
         durationMaxRow.orientation = LinearLayout.HORIZONTAL
         durationMaxRow.weightSum = 2f
 
-        val durationCard = createCard()
-        durationCard.setPadding(dp(4), dp(8), dp(4), dp(8))
-        durationCard.addView(
-            createLabel("DURASI"),
+        val movingCard = createCard()
+        movingCard.setPadding(dp(4), dp(8), dp(4), dp(8))
+        movingCard.addView(
+            createLabel("WAKTU BERSEPEDA"),
             matchWrap().apply {
                 bottomMargin = dp(5)
             }
         )
 
-        durationText = createStatValue("00:00:00")
-        durationText.textSize = 17f
-        durationCard.addView(durationText, matchWrap())
+        movingText = createStatValue("00:00:00")
+        movingText.textSize = 17f
+        movingCard.addView(movingText, matchWrap())
 
         durationMaxRow.addView(
-            durationCard,
+            movingCard,
             LinearLayout.LayoutParams(0, dp(76), 1f).apply {
                 marginEnd = dp(5)
             }
@@ -399,57 +435,6 @@ class MainActivity : Activity(), LocationListener {
 
         root.addView(
             durationMaxRow,
-            matchWrap().apply {
-                bottomMargin = dp(8)
-            }
-        )
-
-        val timeRow = LinearLayout(this)
-        timeRow.orientation = LinearLayout.HORIZONTAL
-        timeRow.weightSum = 2f
-
-        val movingCard = createCard()
-        movingCard.setPadding(dp(4), dp(8), dp(4), dp(8))
-        movingCard.addView(
-            createLabel("WAKTU BERGERAK"),
-            matchWrap().apply {
-                bottomMargin = dp(5)
-            }
-        )
-
-        movingText = createStatValue("00:00:00")
-        movingText.textSize = 15f
-        movingCard.addView(movingText, matchWrap())
-
-        timeRow.addView(
-            movingCard,
-            LinearLayout.LayoutParams(0, dp(76), 1f).apply {
-                marginEnd = dp(5)
-            }
-        )
-
-        val stoppedCard = createCard()
-        stoppedCard.setPadding(dp(4), dp(8), dp(4), dp(8))
-        stoppedCard.addView(
-            createLabel("WAKTU BERHENTI"),
-            matchWrap().apply {
-                bottomMargin = dp(5)
-            }
-        )
-
-        stoppedText = createStatValue("00:00:00")
-        stoppedText.textSize = 15f
-        stoppedCard.addView(stoppedText, matchWrap())
-
-        timeRow.addView(
-            stoppedCard,
-            LinearLayout.LayoutParams(0, dp(76), 1f).apply {
-                marginStart = dp(5)
-            }
-        )
-
-        root.addView(
-            timeRow,
             matchWrap().apply {
                 bottomMargin = dp(8)
             }
@@ -503,7 +488,7 @@ class MainActivity : Activity(), LocationListener {
         )
 
         val speedSettingsButton = Button(this)
-        speedSettingsButton.text = "PENGATURAN KECEPATAN"
+        speedSettingsButton.text = "ATUR KECEPATAN MINIMUM"
         speedSettingsButton.setOnClickListener {
             showSpeedSettings()
         }
@@ -728,11 +713,12 @@ class MainActivity : Activity(), LocationListener {
             val delta = ((now - lastTickTime) / 1000L)
                 .coerceAtLeast(0L)
 
-            totalElapsedTime = (now - startTime) / 1000L
-
             if (isMoving) {
                 totalMovingTime += delta
             }
+
+            lastTickTime = now
+            totalElapsedTime = totalMovingTime
         }
 
         if (tracking) {
@@ -818,7 +804,7 @@ class MainActivity : Activity(), LocationListener {
 
         val now = System.currentTimeMillis()
 
-        if (currentSpeedKmh < 3.0) {
+        if (currentSpeedKmh < 0.05) {
             aboveThresholdSince = 0L
 
             if (belowThresholdSince == 0L) {
@@ -829,20 +815,13 @@ class MainActivity : Activity(), LocationListener {
                 isMoving = false
                 belowThresholdSince = 0L
             }
-        } else if (currentSpeedKmh > 5.0) {
-            belowThresholdSince = 0L
-
-            if (aboveThresholdSince == 0L) {
-                aboveThresholdSince = now
-            }
-
-            if (!isMoving && now - aboveThresholdSince >= 3000L) {
-                isMoving = true
-                aboveThresholdSince = 0L
-            }
         } else {
             belowThresholdSince = 0L
             aboveThresholdSince = 0L
+
+            if (!isMoving) {
+                isMoving = true
+            }
         }
 
         if (currentSpeedKmh > maxSpeedKmh) {
@@ -869,13 +848,16 @@ class MainActivity : Activity(), LocationListener {
 
 
     private fun checkSpeedWarning(now: Long) {
-        if (!tracking || !warningEnabled || !isMoving) {
-            lowSpeedSince = 0L
-            return
-        }
+        val warningCondition =
+            tracking &&
+            warningEnabled &&
+            isMoving &&
+            currentSpeedKmh < minimumSpeedKmh
 
-        if (currentSpeedKmh >= minimumSpeedKmh) {
+        if (!warningCondition) {
             lowSpeedSince = 0L
+            speedAlertText.clearAnimation()
+            speedAlertText.visibility = View.GONE
             return
         }
 
@@ -884,11 +866,23 @@ class MainActivity : Activity(), LocationListener {
             return
         }
 
-        if (now - lowSpeedSince >= 3000L &&
-            (lastWarningTime == 0L || now - lastWarningTime >= 10000L)
-        ) {
-            warningTone.startTone(ToneGenerator.TONE_PROP_BEEP, 300)
-            lastWarningTime = now
+        if (now - lowSpeedSince >= 3000L) {
+            if (speedAlertText.visibility != View.VISIBLE) {
+                speedAlertText.visibility = View.VISIBLE
+
+                val blink = AlphaAnimation(1.0f, 0.15f)
+                blink.duration = 500L
+                blink.repeatMode = AlphaAnimation.REVERSE
+                blink.repeatCount = AlphaAnimation.INFINITE
+                speedAlertText.startAnimation(blink)
+            }
+
+            if (lastWarningTime == 0L ||
+                now - lastWarningTime >= 10000L
+            ) {
+                warningTone.startTone(ToneGenerator.TONE_PROP_BEEP, 500)
+                lastWarningTime = now
+            }
         }
     }
 
