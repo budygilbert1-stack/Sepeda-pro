@@ -54,8 +54,10 @@ class MainActivity : Activity(), LocationListener {
     private lateinit var maxSpeedText: TextView
     private lateinit var statusText: TextView
     private lateinit var startButton: Button
+    private lateinit var pauseButton: Button
 
     private var tracking = false
+    private var manuallyPaused = false
     private var isMoving = false
     private var lastLocation: Location? = null
     private val routeCoordinates = mutableListOf<GeoPoint>()
@@ -94,7 +96,7 @@ class MainActivity : Activity(), LocationListener {
 
     private val timerRunnable = object : Runnable {
         override fun run() {
-            if (!tracking) return
+            if (!tracking || manuallyPaused) return
 
             val now = System.currentTimeMillis()
             val delta = ((now - lastTickTime) / 1000L)
@@ -466,7 +468,14 @@ class MainActivity : Activity(), LocationListener {
         startButton.minHeight = dp(48)
         startButton.setOnClickListener {
             if (tracking) {
-                stopTracking()
+                AlertDialog.Builder(this)
+                    .setTitle("Akhiri perjalanan sekarang?")
+                    .setMessage("Perjalanan akan dihentikan dan disimpan.")
+                    .setNegativeButton("BATAL", null)
+                    .setPositiveButton("YA, BERHENTI") { _, _ ->
+                        stopTracking()
+                    }
+                    .show()
             } else {
                 startTracking()
             }
@@ -474,6 +483,72 @@ class MainActivity : Activity(), LocationListener {
 
         root.addView(
             startButton,
+            matchWrap().apply {
+                bottomMargin = dp(8)
+            }
+        )
+
+        pauseButton = Button(this)
+        pauseButton.text = "Ⅱ  JEDA"
+        pauseButton.isEnabled = false
+        pauseButton.setOnClickListener {
+            if (!tracking) return@setOnClickListener
+
+            manuallyPaused = !manuallyPaused
+
+            if (manuallyPaused) {
+                if (hasLocationPermission()) {
+                    try {
+                        locationManager.removeUpdates(this)
+                    } catch (_: SecurityException) {
+                    }
+                }
+
+                isMoving = false
+                lastLocation = null
+                currentSpeedKmh = 0.0
+                speedText.text = "0.0"
+                speedAlertText.clearAnimation()
+                speedAlertText.visibility = View.GONE
+                lowSpeedSince = 0L
+                lastWarningTime = 0L
+                statusText.text = "JEDA MANUAL"
+                statusText.setTextColor(orange)
+                pauseButton.text = "▶  LANJUTKAN"
+                timerHandler.removeCallbacks(timerRunnable)
+            } else {
+                lastTickTime = System.currentTimeMillis()
+                lastLocation = null
+                statusText.text = "MENCARI SINYAL GPS..."
+                statusText.setTextColor(green)
+                pauseButton.text = "Ⅱ  JEDA"
+
+                try {
+                    locationManager.requestLocationUpdates(
+                        LocationManager.GPS_PROVIDER,
+                        1000L,
+                        1f,
+                        this,
+                        Looper.getMainLooper()
+                    )
+                    timerHandler.removeCallbacks(timerRunnable)
+                    timerHandler.postDelayed(timerRunnable, 1000L)
+                } catch (_: SecurityException) {
+                    manuallyPaused = true
+                    pauseButton.text = "▶  LANJUTKAN"
+                    Toast.makeText(
+                        this,
+                        "Izin lokasi diperlukan untuk melanjutkan.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+
+            updateStatistics()
+        }
+
+        root.addView(
+            pauseButton,
             matchWrap().apply {
                 bottomMargin = dp(8)
             }
@@ -668,6 +743,9 @@ class MainActivity : Activity(), LocationListener {
         startTime = System.currentTimeMillis()
         lastTickTime = startTime
         tracking = true
+        manuallyPaused = false
+        pauseButton.isEnabled = true
+        pauseButton.text = "Ⅱ  JEDA"
 
         speedText.text = "0.0"
         updateStatistics()
@@ -730,6 +808,11 @@ class MainActivity : Activity(), LocationListener {
         }
 
         tracking = false
+        manuallyPaused = false
+        pauseButton.isEnabled = false
+        pauseButton.text = "Ⅱ  JEDA"
+        speedAlertText.clearAnimation()
+        speedAlertText.visibility = View.GONE
         isMoving = false
         lastLocation = null
 
@@ -755,7 +838,7 @@ class MainActivity : Activity(), LocationListener {
     }
 
     override fun onLocationChanged(location: Location) {
-        if (!tracking) return
+        if (!tracking || manuallyPaused) return
 
         if (location.accuracy > 30f) {
             statusText.text = "MENUNGGU GPS LEBIH AKURAT"
@@ -850,6 +933,7 @@ class MainActivity : Activity(), LocationListener {
     private fun checkSpeedWarning(now: Long) {
         val warningCondition =
             tracking &&
+            !manuallyPaused &&
             warningEnabled &&
             isMoving &&
             currentSpeedKmh < minimumSpeedKmh
