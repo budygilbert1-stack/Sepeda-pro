@@ -21,6 +21,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.animation.AlphaAnimation
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -55,6 +56,8 @@ class MainActivity : Activity(), LocationListener {
     private lateinit var statusText: TextView
     private lateinit var startButton: Button
     private lateinit var pauseButton: Button
+    private lateinit var mapSpeedText: TextView
+    private lateinit var gpsIndicator: TextView
 
     private var tracking = false
     private var manuallyPaused = false
@@ -600,7 +603,147 @@ class MainActivity : Activity(), LocationListener {
 
         root.addView(footer, matchWrap())
 
-        setContentView(scroll)
+        root.removeAllViews()
+
+        val outer = LinearLayout(this)
+        outer.orientation = LinearLayout.VERTICAL
+        outer.setBackgroundColor(background)
+
+        val navigation = LinearLayout(this)
+        navigation.orientation = LinearLayout.HORIZONTAL
+        navigation.setPadding(dp(8), dp(6), dp(8), dp(6))
+        navigation.setBackgroundColor(cardColor)
+
+        val speedTab = Button(this)
+        speedTab.text = "SPEEDOMETER"
+
+        val mapTab = Button(this)
+        mapTab.text = "MAPS"
+
+        gpsIndicator = TextView(this)
+        gpsIndicator.text = "🛰 GPS"
+        gpsIndicator.textSize = 14f
+        gpsIndicator.gravity = Gravity.CENTER
+        gpsIndicator.setTextColor(Color.RED)
+        gpsIndicator.setPadding(dp(6), dp(4), dp(6), dp(4))
+
+        navigation.addView(
+            speedTab,
+            LinearLayout.LayoutParams(0, dp(48), 1f)
+        )
+        navigation.addView(
+            mapTab,
+            LinearLayout.LayoutParams(0, dp(48), 1f)
+        )
+        navigation.addView(
+            gpsIndicator,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                dp(48)
+            )
+        )
+
+        outer.addView(navigation, matchWrap())
+
+        val pages = FrameLayout(this)
+
+        val speedScroll = ScrollView(this)
+        speedScroll.setBackgroundColor(background)
+
+        val speedRoot = LinearLayout(this)
+        speedRoot.orientation = LinearLayout.VERTICAL
+        speedRoot.setPadding(dp(12), dp(10), dp(12), dp(12))
+
+        speedRoot.addView(title, matchWrap())
+        speedRoot.addView(subtitle, matchWrap())
+        speedRoot.addView(speedCard, matchWrap())
+        speedRoot.addView(distanceAverageRow, matchWrap())
+        speedRoot.addView(durationMaxRow, matchWrap())
+        speedRoot.addView(statusText, matchWrap())
+        speedRoot.addView(startButton, matchWrap())
+        speedRoot.addView(pauseButton, matchWrap())
+        speedRoot.addView(historyButton, matchWrap())
+        speedRoot.addView(speedSettingsButton, matchWrap())
+        speedRoot.addView(info, matchWrap())
+        speedRoot.addView(footer, matchWrap())
+
+        speedScroll.addView(speedRoot)
+
+        val mapFrame = FrameLayout(this)
+        mapFrame.setBackgroundColor(background)
+
+        mapTitle.text = "PETA DAN RUTE PERJALANAN"
+        mapTitle.setPadding(dp(8), dp(6), dp(8), dp(6))
+
+        mapFrame.addView(
+            map,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        mapSpeedText = TextView(this)
+        mapSpeedText.text = "0.0 km/jam"
+        mapSpeedText.textSize = 24f
+        mapSpeedText.typeface = Typeface.DEFAULT_BOLD
+        mapSpeedText.setTextColor(white)
+        mapSpeedText.setBackgroundColor(cardColor)
+        mapSpeedText.gravity = Gravity.CENTER
+        mapSpeedText.setPadding(dp(16), dp(8), dp(16), dp(8))
+
+        val mapOverlay = LinearLayout(this)
+        mapOverlay.orientation = LinearLayout.VERTICAL
+        mapOverlay.addView(mapTitle, matchWrap())
+        mapOverlay.addView(mapSpeedText, matchWrap())
+
+        mapFrame.addView(
+            mapOverlay,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP
+            )
+        )
+
+        pages.addView(
+            speedScroll,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        pages.addView(
+            mapFrame,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        mapFrame.visibility = View.GONE
+
+        speedTab.setOnClickListener {
+            speedScroll.visibility = View.VISIBLE
+            mapFrame.visibility = View.GONE
+        }
+
+        mapTab.setOnClickListener {
+            speedScroll.visibility = View.GONE
+            mapFrame.visibility = View.VISIBLE
+            map.invalidate()
+        }
+
+        outer.addView(
+            pages,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
+        setContentView(outer)
     }
 
     private fun createCard(): LinearLayout {
@@ -916,6 +1059,19 @@ class MainActivity : Activity(), LocationListener {
             "%.1f",
             currentSpeedKmh
         )
+
+        if (::mapSpeedText.isInitialized) {
+            mapSpeedText.text = String.format(
+                Locale.US,
+                "%.1f km/jam",
+                currentSpeedKmh
+            )
+        }
+
+        if (::gpsIndicator.isInitialized) {
+            gpsIndicator.setTextColor(green)
+            gpsIndicator.clearAnimation()
+        }
 
         if (isMoving) {
             statusText.text = "GPS AKTIF · MEREKAM PERJALANAN"
