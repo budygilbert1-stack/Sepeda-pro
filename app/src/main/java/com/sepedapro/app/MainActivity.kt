@@ -5,6 +5,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.graphics.Typeface
 import android.location.Location
 import android.location.LocationListener
@@ -56,6 +57,9 @@ class MainActivity : Activity(), LocationListener {
     private lateinit var statusText: TextView
     private lateinit var startButton: Button
     private lateinit var pauseButton: Button
+    private lateinit var resumeButton: Button
+    private lateinit var stopButton: Button
+    private lateinit var settingsButton: Button
     private lateinit var mapSpeedText: TextView
     private lateinit var gpsIndicator: TextView
 
@@ -169,6 +173,36 @@ class MainActivity : Activity(), LocationListener {
 
 
 
+
+    private fun styleTrackingControls(isTracking: Boolean) {
+        startButton.text = if (isTracking) "Ⅱ" else "▶"
+        startButton.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(if (isTracking) orange else green)
+        }
+        startButton.visibility = View.VISIBLE
+        pauseButton.visibility = if (isTracking) View.VISIBLE else View.GONE
+        resumeButton.visibility = View.GONE
+        stopButton.visibility = View.GONE
+        settingsButton.visibility = View.VISIBLE
+    }
+
+    private fun showSettingsMenu() {
+        AlertDialog.Builder(this)
+            .setTitle("Pengaturan Sepeda Pro")
+            .setItems(
+                arrayOf(
+                    "Batas kecepatan dan peringatan suara",
+                    "Riwayat perjalanan"
+                )
+            ) { _, which ->
+                when (which) {
+                    0 -> showSpeedSettings()
+                    1 -> showTripHistory()
+                }
+            }
+            .show()
+    }
 
     private fun showSpeedSettings() {
         val input = EditText(this)
@@ -466,124 +500,154 @@ class MainActivity : Activity(), LocationListener {
         )
 
         startButton = Button(this)
-        startButton.text = "▶  MULAI BERSEPEDA"
-        startButton.textSize = 15f
-        startButton.setTextColor(white)
-        startButton.setBackgroundColor(green)
-        startButton.minHeight = dp(48)
+        pauseButton = Button(this)
+        resumeButton = Button(this)
+        stopButton = Button(this)
+        settingsButton = Button(this)
+
+        fun styleRoundButton(button: Button, symbol: String, color: Int) {
+            button.text = symbol
+            button.textSize = 25f
+            button.setTextColor(white)
+            button.isAllCaps = false
+            button.gravity = Gravity.CENTER
+            button.minWidth = 0
+            button.minHeight = 0
+            button.setPadding(0, 0, 0, 0)
+            button.background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(color)
+            }
+            button.contentDescription = when (symbol) {
+                "▶" -> "Mulai atau lanjutkan perjalanan"
+                "Ⅱ" -> "Jeda perjalanan"
+                "■" -> "Hentikan perjalanan"
+                "⚙" -> "Pengaturan dan riwayat"
+                else -> symbol
+            }
+        }
+
+        val controlRow = LinearLayout(this)
+        controlRow.orientation = LinearLayout.HORIZONTAL
+        controlRow.gravity = Gravity.CENTER
+        controlRow.setPadding(0, dp(8), 0, dp(8))
+
+        fun addRoundControl(button: Button) {
+            controlRow.addView(
+                button,
+                LinearLayout.LayoutParams(dp(54), dp(54)).apply {
+                    setMargins(dp(5), 0, dp(5), 0)
+                }
+            )
+        }
+
+        styleRoundButton(startButton, "▶", green)
+        styleRoundButton(pauseButton, "Ⅱ", orange)
+        styleRoundButton(resumeButton, "▶", green)
+        styleRoundButton(stopButton, "■", Color.rgb(220, 65, 65))
+        styleRoundButton(settingsButton, "⚙", cardColor)
+
+        pauseButton.visibility = View.GONE
+        resumeButton.visibility = View.GONE
+        stopButton.visibility = View.GONE
+
         startButton.setOnClickListener {
             if (tracking) {
-                AlertDialog.Builder(this)
-                    .setTitle("Akhiri perjalanan sekarang?")
-                    .setMessage("Perjalanan akan dihentikan dan disimpan.")
-                    .setNegativeButton("BATAL", null)
-                    .setPositiveButton("YA, BERHENTI") { _, _ ->
-                        stopTracking()
-                    }
-                    .show()
+                pauseButton.performClick()
             } else {
                 startTracking()
             }
         }
 
-        root.addView(
-            startButton,
-            matchWrap().apply {
-                bottomMargin = dp(8)
-            }
-        )
-
-        pauseButton = Button(this)
-        pauseButton.text = "Ⅱ  JEDA"
-        pauseButton.isEnabled = false
         pauseButton.setOnClickListener {
-            if (!tracking) return@setOnClickListener
+            if (!tracking || manuallyPaused) return@setOnClickListener
 
-            manuallyPaused = !manuallyPaused
+            manuallyPaused = true
 
-            if (manuallyPaused) {
-                if (hasLocationPermission()) {
-                    try {
-                        locationManager.removeUpdates(this)
-                    } catch (_: SecurityException) {
-                    }
+            if (hasLocationPermission()) {
+                try {
+                    locationManager.removeUpdates(this)
+                } catch (_: SecurityException) {
                 }
+            }
 
-                isMoving = false
-                lastLocation = null
-                currentSpeedKmh = 0.0
-                speedText.text = "0.0"
-                speedAlertText.clearAnimation()
-                speedAlertText.visibility = View.GONE
-                lowSpeedSince = 0L
-                lastWarningTime = 0L
-                statusText.text = "JEDA MANUAL"
-                statusText.setTextColor(orange)
-                pauseButton.text = "▶  LANJUTKAN"
-                timerHandler.removeCallbacks(timerRunnable)
-            } else {
-                lastTickTime = System.currentTimeMillis()
-                lastLocation = null
+            isMoving = false
+            lastLocation = null
+            currentSpeedKmh = 0.0
+            speedText.text = "0.0"
+            speedAlertText.clearAnimation()
+            speedAlertText.visibility = View.GONE
+            lowSpeedSince = 0L
+            lastWarningTime = 0L
+            statusText.text = "JEDA MANUAL"
+            statusText.setTextColor(orange)
+            timerHandler.removeCallbacks(timerRunnable)
+
+            startButton.visibility = View.GONE
+            pauseButton.visibility = View.GONE
+            resumeButton.visibility = View.VISIBLE
+            stopButton.visibility = View.VISIBLE
+
+            updateStatistics()
+        }
+
+        resumeButton.setOnClickListener {
+            if (!tracking || !manuallyPaused) return@setOnClickListener
+
+            lastTickTime = System.currentTimeMillis()
+            lastLocation = null
+
+            try {
+                locationManager.requestLocationUpdates(
+                    LocationManager.GPS_PROVIDER,
+                    1000L,
+                    1f,
+                    this,
+                    Looper.getMainLooper()
+                )
+
+                manuallyPaused = false
                 statusText.text = "MENCARI SINYAL GPS..."
                 statusText.setTextColor(green)
-                pauseButton.text = "Ⅱ  JEDA"
 
-                try {
-                    locationManager.requestLocationUpdates(
-                        LocationManager.GPS_PROVIDER,
-                        1000L,
-                        1f,
-                        this,
-                        Looper.getMainLooper()
-                    )
-                    timerHandler.removeCallbacks(timerRunnable)
-                    timerHandler.postDelayed(timerRunnable, 1000L)
-                } catch (_: SecurityException) {
-                    manuallyPaused = true
-                    pauseButton.text = "▶  LANJUTKAN"
-                    Toast.makeText(
-                        this,
-                        "Izin lokasi diperlukan untuk melanjutkan.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
+                timerHandler.removeCallbacks(timerRunnable)
+                timerHandler.postDelayed(timerRunnable, 1000L)
+
+                startButton.visibility = View.VISIBLE
+                pauseButton.visibility = View.VISIBLE
+                resumeButton.visibility = View.GONE
+                stopButton.visibility = View.GONE
+            } catch (_: SecurityException) {
+                Toast.makeText(
+                    this,
+                    "Izin lokasi diperlukan untuk melanjutkan.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
 
             updateStatistics()
         }
 
-        root.addView(
-            pauseButton,
-            matchWrap().apply {
-                bottomMargin = dp(8)
-            }
-        )
-
-        val historyButton = Button(this)
-        historyButton.text = "RIWAYAT PERJALANAN"
-        historyButton.setOnClickListener {
-            showTripHistory()
+        stopButton.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Akhiri perjalanan sekarang?")
+                .setMessage("Perjalanan akan dihentikan dan disimpan.")
+                .setNegativeButton("BATAL", null)
+                .setPositiveButton("YA, BERHENTI") { _, _ ->
+                    stopTracking()
+                }
+                .show()
         }
-        root.addView(
-            historyButton,
-            matchWrap().apply {
-                bottomMargin = dp(8)
-            }
-        )
 
-        val speedSettingsButton = Button(this)
-        speedSettingsButton.text = "ATUR KECEPATAN MINIMUM"
-        speedSettingsButton.setOnClickListener {
-            showSpeedSettings()
+        settingsButton.setOnClickListener {
+            showSettingsMenu()
         }
-        root.addView(
-            speedSettingsButton,
-            matchWrap().apply {
-                bottomMargin = dp(8)
-            }
-        )
 
-
+        addRoundControl(startButton)
+        addRoundControl(pauseButton)
+        addRoundControl(resumeButton)
+        addRoundControl(stopButton)
+        addRoundControl(settingsButton)
 
         val info = TextView(this)
         info.textSize = 11f
@@ -656,16 +720,17 @@ class MainActivity : Activity(), LocationListener {
         speedRoot.orientation = LinearLayout.VERTICAL
         speedRoot.setPadding(dp(12), dp(10), dp(12), dp(12))
 
-        speedRoot.addView(title, matchWrap())
-        speedRoot.addView(subtitle, matchWrap())
         speedRoot.addView(speedCard, matchWrap())
         speedRoot.addView(distanceAverageRow, matchWrap())
         speedRoot.addView(durationMaxRow, matchWrap())
-        speedRoot.addView(startButton, matchWrap())
-        speedRoot.addView(pauseButton, matchWrap())
-        speedRoot.addView(historyButton, matchWrap())
-        speedRoot.addView(speedSettingsButton, matchWrap())
+        speedRoot.addView(controlRow, matchWrap())
         speedRoot.addView(info, matchWrap())
+        val brandText = TextView(this)
+        brandText.text = "Sepeda Pro"
+        brandText.textSize = 11f
+        brandText.setTextColor(muted)
+        brandText.gravity = Gravity.CENTER
+        speedRoot.addView(brandText, matchWrap())
         speedRoot.addView(footer, matchWrap())
 
         speedScroll.addView(speedRoot)
@@ -1009,14 +1074,10 @@ class MainActivity : Activity(), LocationListener {
         lastTickTime = startTime
         tracking = true
         manuallyPaused = false
-        pauseButton.isEnabled = true
-        pauseButton.text = "Ⅱ  JEDA"
+        styleTrackingControls(true)
 
         speedText.text = "0.0"
         updateStatistics()
-
-        startButton.text = "■  BERHENTI BERSEPEDA"
-        startButton.setBackgroundColor(Color.rgb(220, 65, 65))
 
         statusText.text = "MENCARI SINYAL GPS..."
         statusText.setTextColor(green)
@@ -1046,8 +1107,7 @@ class MainActivity : Activity(), LocationListener {
             tracking = false
             timerHandler.removeCallbacks(timerRunnable)
 
-            startButton.text = "▶  MULAI BERSEPEDA"
-            startButton.setBackgroundColor(green)
+            styleTrackingControls(false)
 
             Toast.makeText(
                 this,
@@ -1084,18 +1144,13 @@ class MainActivity : Activity(), LocationListener {
 
         tracking = false
         manuallyPaused = false
-        pauseButton.isEnabled = false
-        pauseButton.text = "Ⅱ  JEDA"
+        styleTrackingControls(false)
         speedAlertText.clearAnimation()
         speedAlertText.visibility = View.GONE
         isMoving = false
         lastLocation = null
 
         timerHandler.removeCallbacks(timerRunnable)
-
-        startButton.text = "▶  MULAI BERSEPEDA"
-        startButton.setTextColor(white)
-        startButton.setBackgroundColor(green)
 
         speedText.text = "0.0"
         currentSpeedKmh = 0.0
