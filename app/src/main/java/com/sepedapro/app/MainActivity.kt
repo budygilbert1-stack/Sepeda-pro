@@ -511,7 +511,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
             button.setTextColor(white)
             button.isAllCaps = false
             button.gravity = Gravity.CENTER
-            button.translationX = if (symbol == "▶") dp(1).toFloat() else 0f
+            button.translationX = if (symbol == "▶") dp(3).toFloat() else 0f
             button.translationY = 0f
             button.minWidth = 0
             button.minHeight = 0
