@@ -686,25 +686,51 @@ class MainActivity : Activity(), LocationListener {
 
         mapSpeedText = TextView(this)
         mapSpeedText.text = "0.0"
-        mapSpeedText.textSize = 27f
+        mapSpeedText.textSize = 22f
         mapSpeedText.typeface = Typeface.DEFAULT_BOLD
         mapSpeedText.setTextColor(white)
         mapSpeedText.gravity = Gravity.CENTER
-        mapSpeedText.setPadding(dp(8), dp(8), dp(8), dp(8))
-        mapSpeedText.background =
+
+        val mapSpeedUnitText = TextView(this)
+        mapSpeedUnitText.text = "km/j"
+        mapSpeedUnitText.textSize = 10f
+        mapSpeedUnitText.setTextColor(white)
+        mapSpeedUnitText.gravity = Gravity.CENTER
+
+        val speedOverlaySize = dp(76)
+
+        val mapSpeedContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            addView(
+                mapSpeedText,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+            addView(
+                mapSpeedUnitText,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
+        val mapSpeedContainer = FrameLayout(this)
+        mapSpeedContainer.background =
             android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
                 setColor(cardColor)
                 setStroke(dp(2), green)
             }
 
-        val speedOverlaySize = dp(112)
-        val mapSpeedContainer = FrameLayout(this)
         mapSpeedContainer.addView(
-            mapSpeedText,
+            mapSpeedContent,
             FrameLayout.LayoutParams(
-                speedOverlaySize,
-                speedOverlaySize,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
                 Gravity.CENTER
             )
         )
@@ -1169,7 +1195,7 @@ class MainActivity : Activity(), LocationListener {
         if (::mapSpeedText.isInitialized) {
             mapSpeedText.text = String.format(
                 Locale.US,
-                "%.1f km/jam",
+                "%.1f",
                 currentSpeedKmh
             )
         }
