@@ -685,27 +685,89 @@ class MainActivity : Activity(), LocationListener {
         )
 
         mapSpeedText = TextView(this)
-        mapSpeedText.text = "0.0 km/jam"
-        mapSpeedText.textSize = 30f
+        mapSpeedText.text = "0.0"
+        mapSpeedText.textSize = 27f
         mapSpeedText.typeface = Typeface.DEFAULT_BOLD
         mapSpeedText.setTextColor(white)
-        mapSpeedText.setBackgroundColor(cardColor)
         mapSpeedText.gravity = Gravity.CENTER
-        mapSpeedText.setPadding(dp(16), dp(8), dp(16), dp(8))
+        mapSpeedText.setPadding(dp(8), dp(8), dp(8), dp(8))
+        mapSpeedText.background =
+            android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(cardColor)
+                setStroke(dp(2), green)
+            }
 
-        val mapOverlay = LinearLayout(this)
-        mapOverlay.orientation = LinearLayout.VERTICAL
-        mapOverlay.addView(mapTitle, matchWrap())
-        mapOverlay.addView(mapSpeedText, matchWrap())
+        val speedOverlaySize = dp(112)
+        val mapSpeedContainer = FrameLayout(this)
+        mapSpeedContainer.addView(
+            mapSpeedText,
+            FrameLayout.LayoutParams(
+                speedOverlaySize,
+                speedOverlaySize,
+                Gravity.CENTER
+            )
+        )
 
         mapFrame.addView(
-            mapOverlay,
+            mapTitle,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.TOP
             )
         )
+
+        val overlayParams = FrameLayout.LayoutParams(
+            speedOverlaySize,
+            speedOverlaySize,
+            Gravity.TOP or Gravity.END
+        ).apply {
+            topMargin = dp(70)
+            marginEnd = dp(16)
+        }
+
+        mapFrame.addView(mapSpeedContainer, overlayParams)
+
+        var dragStartX = 0f
+        var dragStartY = 0f
+        var overlayStartLeft = 0
+        var overlayStartTop = 0
+
+        mapSpeedContainer.setOnTouchListener { view, event ->
+            when (event.action) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    dragStartX = event.rawX
+                    dragStartY = event.rawY
+                    val params =
+                        view.layoutParams as FrameLayout.LayoutParams
+                    overlayStartLeft = params.leftMargin
+                    overlayStartTop = params.topMargin
+                    true
+                }
+
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    val dx = (event.rawX - dragStartX).toInt()
+                    val dy = (event.rawY - dragStartY).toInt()
+                    val params =
+                        view.layoutParams as FrameLayout.LayoutParams
+
+                    params.gravity = Gravity.TOP or Gravity.START
+                    params.leftMargin =
+                        (overlayStartLeft + dx).coerceAtLeast(0)
+                    params.topMargin =
+                        (overlayStartTop + dy).coerceAtLeast(0)
+
+                    view.layoutParams = params
+                    true
+                }
+
+                android.view.MotionEvent.ACTION_UP,
+                android.view.MotionEvent.ACTION_CANCEL -> true
+
+                else -> true
+            }
+        }
 
         pages.addView(
             speedScroll,
