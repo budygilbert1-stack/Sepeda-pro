@@ -173,20 +173,19 @@ class MainActivity : Activity(), LocationListener {
 
 
 
-
-    private fun styleTrackingControls(isTracking: Boolean) {
-        startButton.text = if (isTracking) "Ⅱ" else "▶"
-        startButton.background = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(if (isTracking) orange else green)
-        }
-        startButton.visibility = View.VISIBLE
-        pauseButton.visibility = if (isTracking) View.VISIBLE else View.GONE
-        resumeButton.visibility = View.GONE
-        stopButton.visibility = View.GONE
-        settingsButton.visibility = View.VISIBLE
+private fun styleTrackingControls(isTracking: Boolean) {
+    startButton.text = if (isTracking) "Ⅱ" else "▶"
+    startButton.background = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(if (isTracking) orange else green)
     }
 
+    startButton.visibility = View.VISIBLE
+    pauseButton.visibility = View.GONE
+    resumeButton.visibility = View.GONE
+    stopButton.visibility = View.GONE
+    settingsButton.visibility = View.VISIBLE
+}
     private fun showSettingsMenu() {
         AlertDialog.Builder(this)
             .setTitle("Pengaturan Sepeda Pro")
@@ -505,19 +504,27 @@ class MainActivity : Activity(), LocationListener {
         stopButton = Button(this)
         settingsButton = Button(this)
 
+
         fun styleRoundButton(button: Button, symbol: String, color: Int) {
             button.text = symbol
             button.textSize = 25f
             button.setTextColor(white)
             button.isAllCaps = false
             button.gravity = Gravity.CENTER
+            button.translationX = if (symbol == "▶") dp(1).toFloat() else 0f
+            button.translationY = 0f
             button.minWidth = 0
             button.minHeight = 0
+            button.minimumWidth = 0
+            button.minimumHeight = 0
             button.setPadding(0, 0, 0, 0)
+            button.includeFontPadding = false
+
             button.background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(color)
             }
+
             button.contentDescription = when (symbol) {
                 "▶" -> "Mulai atau lanjutkan perjalanan"
                 "Ⅱ" -> "Jeda perjalanan"
@@ -613,10 +620,7 @@ class MainActivity : Activity(), LocationListener {
                 timerHandler.removeCallbacks(timerRunnable)
                 timerHandler.postDelayed(timerRunnable, 1000L)
 
-                startButton.visibility = View.VISIBLE
-                pauseButton.visibility = View.VISIBLE
-                resumeButton.visibility = View.GONE
-                stopButton.visibility = View.GONE
+		styleTrackingControls(true)
             } catch (_: SecurityException) {
                 Toast.makeText(
                     this,
