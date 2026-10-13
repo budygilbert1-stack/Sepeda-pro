@@ -775,7 +775,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
             arrayOf(
                 GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
-                    setColor(green)
+                    setColor(Color.WHITE)
                 },
                 getDrawable(R.drawable.ic_map_pin)!!
             )
