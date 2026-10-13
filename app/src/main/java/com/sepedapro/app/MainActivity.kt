@@ -687,12 +687,6 @@ private fun styleTrackingControls(isTracking: Boolean) {
         navigation.setPadding(dp(8), dp(6), dp(8), dp(6))
         navigation.setBackgroundColor(cardColor)
 
-        val speedTab = Button(this)
-        speedTab.text = "SPEEDOMETER"
-
-        val mapTab = Button(this)
-        mapTab.text = "MAPS"
-
         gpsIndicator = TextView(this)
         gpsIndicator.text = "🛰 GPS"
         gpsIndicator.textSize = 14f
@@ -700,14 +694,6 @@ private fun styleTrackingControls(isTracking: Boolean) {
         gpsIndicator.setTextColor(Color.RED)
         gpsIndicator.setPadding(dp(6), dp(4), dp(6), dp(4))
 
-        navigation.addView(
-            speedTab,
-            LinearLayout.LayoutParams(0, dp(48), 1f)
-        )
-        navigation.addView(
-            mapTab,
-            LinearLayout.LayoutParams(0, dp(48), 1f)
-        )
         navigation.addView(
             gpsIndicator,
             LinearLayout.LayoutParams(
@@ -743,6 +729,67 @@ private fun styleTrackingControls(isTracking: Boolean) {
         speedScroll.addView(speedRoot)
 
         val mapFrame = FrameLayout(this)
+
+        fun createNavigationButton(
+            symbol: String,
+            description: String,
+            color: Int,
+            onClick: () -> Unit
+        ): Button {
+            return Button(this).apply {
+                text = symbol
+                textSize = 22f
+                isAllCaps = false
+                gravity = Gravity.CENTER
+                setTextColor(white)
+                minWidth = 0
+                minHeight = 0
+                minimumWidth = 0
+                minimumHeight = 0
+                setPadding(0, 0, 0, 0)
+                contentDescription = description
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(color)
+                }
+                setOnClickListener { onClick() }
+            }
+        }
+
+        val dashboardNavigation = FrameLayout(this)
+
+        val openMapsButton = createNavigationButton(
+            "🗺",
+            "Buka peta",
+            green
+        ) {
+            speedScroll.visibility = View.GONE
+            dashboardNavigation.visibility = View.GONE
+            mapFrame.visibility = View.VISIBLE
+            map.invalidate()
+        }
+
+        val openDashboardButton = createNavigationButton(
+            "⌂",
+            "Kembali ke Dashboard",
+            green
+        ) {
+            mapFrame.visibility = View.GONE
+            speedScroll.visibility = View.VISIBLE
+            dashboardNavigation.visibility = View.VISIBLE
+        }
+
+        dashboardNavigation.addView(
+            openMapsButton,
+            FrameLayout.LayoutParams(
+                dp(52),
+                dp(52),
+                Gravity.END or Gravity.TOP
+            ).apply {
+                setMargins(0, dp(8), dp(8), 0)
+            }
+        )
+
         mapFrame.setBackgroundColor(background)
 
         mapTitle.text = "PETA DAN RUTE PERJALANAN"
@@ -816,6 +863,17 @@ private fun styleTrackingControls(isTracking: Boolean) {
             )
         )
 
+        mapFrame.addView(
+            openDashboardButton,
+            FrameLayout.LayoutParams(
+                dp(52),
+                dp(52),
+                Gravity.TOP or Gravity.START
+            ).apply {
+                setMargins(dp(8), dp(52), 0, 0)
+            }
+        )
+
         val overlayParams = FrameLayout.LayoutParams(
             speedOverlaySize,
             speedOverlaySize,
@@ -875,6 +933,14 @@ private fun styleTrackingControls(isTracking: Boolean) {
             )
         )
         pages.addView(
+            dashboardNavigation,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                dp(68),
+                Gravity.TOP
+            )
+        )
+        pages.addView(
             mapFrame,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -903,11 +969,13 @@ private fun styleTrackingControls(isTracking: Boolean) {
                     ) {
                         if (dx < 0) {
                             speedScroll.visibility = View.GONE
+                            dashboardNavigation.visibility = View.GONE
                             mapFrame.visibility = View.VISIBLE
                             map.invalidate()
                         } else {
                             mapFrame.visibility = View.GONE
                             speedScroll.visibility = View.VISIBLE
+                            dashboardNavigation.visibility = View.VISIBLE
                         }
                     }
                     true
@@ -916,17 +984,6 @@ private fun styleTrackingControls(isTracking: Boolean) {
             }
         }
 
-        speedTab.setOnClickListener {
-            speedScroll.visibility = View.VISIBLE
-            mapFrame.visibility = View.GONE
-        }
-
-
-        mapTab.setOnClickListener {
-            speedScroll.visibility = View.GONE
-            mapFrame.visibility = View.VISIBLE
-            map.invalidate()
-        }
 
         outer.addView(
             pages,
