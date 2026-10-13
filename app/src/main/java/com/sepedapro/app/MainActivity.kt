@@ -738,10 +738,11 @@ private fun styleTrackingControls(isTracking: Boolean) {
         ): Button {
             return Button(this).apply {
                 text = symbol
-                textSize = 22f
+                textSize = 30f
                 isAllCaps = false
                 gravity = Gravity.CENTER
                 setTextColor(white)
+                includeFontPadding = false
                 minWidth = 0
                 minHeight = 0
                 minimumWidth = 0
@@ -759,7 +760,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
         val dashboardNavigation = FrameLayout(this)
 
         val openMapsButton = createNavigationButton(
-            "🗺",
+            "▦",
             "Buka peta",
             green
         ) {
@@ -868,9 +869,9 @@ private fun styleTrackingControls(isTracking: Boolean) {
             FrameLayout.LayoutParams(
                 dp(52),
                 dp(52),
-                Gravity.TOP or Gravity.START
+                Gravity.TOP or Gravity.END
             ).apply {
-                setMargins(dp(8), dp(52), 0, 0)
+                setMargins(0, dp(8), dp(8), 0)
             }
         )
 
