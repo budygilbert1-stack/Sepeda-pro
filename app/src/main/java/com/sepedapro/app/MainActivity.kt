@@ -6,6 +6,7 @@ import android.app.AlertDialog
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.graphics.Typeface
 import android.location.Location
 import android.location.LocationListener
@@ -760,7 +761,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
         val dashboardNavigation = FrameLayout(this)
 
         val openMapsButton = createNavigationButton(
-            "▦",
+            "",
             "Buka peta",
             green
         ) {
@@ -768,6 +769,18 @@ private fun styleTrackingControls(isTracking: Boolean) {
             dashboardNavigation.visibility = View.GONE
             mapFrame.visibility = View.VISIBLE
             map.invalidate()
+        }
+
+        openMapsButton.background = LayerDrawable(
+            arrayOf(
+                GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(green)
+                },
+                getDrawable(R.drawable.ic_map_pin)!!
+            )
+        ).apply {
+            setLayerInset(1, dp(9), dp(9), dp(9), dp(9))
         }
 
         val openDashboardButton = createNavigationButton(
