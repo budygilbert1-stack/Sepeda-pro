@@ -156,15 +156,12 @@ class MainActivity : Activity(), LocationListener {
             20.0f
         ).toDouble()
 
-        warningEnabled = warningPreferences.getBoolean(
-            "warning_enabled",
-            true
-        )
-
         speedIndicatorEnabled = warningPreferences.getBoolean(
             "speed_indicator_enabled",
             true
         )
+        // Bunyi peringatan otomatis mengikuti pengaturan kecepatan minimum.
+        warningEnabled = speedIndicatorEnabled
 
 
 
@@ -202,7 +199,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
             .setTitle("Pengaturan Sepeda Pro")
             .setItems(
                 arrayOf(
-                    "Batas kecepatan dan peringatan suara",
+                    "Atur kecepatan minimum",
                     "Riwayat perjalanan"
                 )
             ) { _, which ->
@@ -233,12 +230,6 @@ private fun styleTrackingControls(isTracking: Boolean) {
         container.addView(speedLabel)
         container.addView(input)
 
-        val soundCheck = android.widget.CheckBox(this)
-        soundCheck.text = "Aktifkan bunyi peringatan"
-        soundCheck.setTextColor(white)
-        soundCheck.isChecked = warningEnabled
-        container.addView(soundCheck)
-
         val indicatorCheck = android.widget.CheckBox(this)
         indicatorCheck.text = "Atur kecepatan minimum"
         indicatorCheck.setTextColor(white)
@@ -260,12 +251,12 @@ private fun styleTrackingControls(isTracking: Boolean) {
                     ).show()
                 } else {
                     minimumSpeedKmh = newSpeed
-                    warningEnabled = soundCheck.isChecked
                     speedIndicatorEnabled = indicatorCheck.isChecked
+                    warningEnabled = speedIndicatorEnabled
 
                     warningPreferences.edit()
                         .putFloat("minimum_speed", newSpeed.toFloat())
-                        .putBoolean("warning_enabled", warningEnabled)
+                        .putBoolean("warning_enabled", speedIndicatorEnabled)
                         .putBoolean("speed_indicator_enabled", speedIndicatorEnabled)
                         .apply()
 
