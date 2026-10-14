@@ -69,6 +69,7 @@ class MainActivity : Activity(), LocationListener {
 
     private var tracking = false
     private var manuallyPaused = false
+    private var automaticallyPaused = false
     private var isMoving = false
     private var lastLocation: Location? = null
     private val routeCoordinates = mutableListOf<GeoPoint>()
@@ -119,9 +120,6 @@ class MainActivity : Activity(), LocationListener {
 
             lastTickTime = now
 
-            // Statistik durasi utama menggunakan waktu bersepeda.
-            totalElapsedTime += delta
-
             // Jeda otomatis jika kecepatan <= 5 km/jam selama 5 detik.
             if (
                 isMoving &&
@@ -129,12 +127,28 @@ class MainActivity : Activity(), LocationListener {
                 now - belowThresholdSince >= 5000L
             ) {
                 isMoving = false
+                automaticallyPaused = true
                 aboveThresholdSince = 0L
                 statusText.text = "JEDA OTOMATIS"
                 statusText.setTextColor(orange)
+                pauseIndicator.clearAnimation()
+                pauseIndicator.alpha = 1.0f
+                pauseIndicator.setTextColor(Color.RED)
+                pauseIndicator.text = "⏸"
+                pauseIndicator.visibility = View.VISIBLE
+                pauseIndicator.startAnimation(
+                    AlphaAnimation(1.0f, 0.15f).apply {
+                        duration = 500L
+                        repeatMode = AlphaAnimation.REVERSE
+                        repeatCount = AlphaAnimation.INFINITE
+                    }
+                )
             }
 
-
+            // Hitung durasi setelah status jeda otomatis diperbarui.
+            if (!automaticallyPaused) {
+                totalElapsedTime += delta
+            }
 
             updateStatistics()
             checkSpeedWarning(now)
@@ -1212,6 +1226,10 @@ private fun styleTrackingControls(isTracking: Boolean) {
         totalDistance = 0.0
         totalMovingTime = 0L
         totalElapsedTime = 0L
+        automaticallyPaused = false
+        pauseIndicator.clearAnimation()
+        pauseIndicator.alpha = 1.0f
+        pauseIndicator.visibility = View.GONE
         currentSpeedKmh = 0.0
         maxSpeedKmh = 0.0
         lowSpeedSince = 0L
@@ -1302,7 +1320,9 @@ private fun styleTrackingControls(isTracking: Boolean) {
             }
 
             lastTickTime = now
-            totalElapsedTime += delta
+            if (!automaticallyPaused) {
+                totalElapsedTime += delta
+            }
         }
 
         if (tracking) {
@@ -1311,12 +1331,13 @@ private fun styleTrackingControls(isTracking: Boolean) {
 
         tracking = false
         manuallyPaused = false
-        styleTrackingControls(false)
-        speedAlertText.clearAnimation()
-        speedAlertText.visibility = View.GONE
+        automaticallyPaused = false
         pauseIndicator.clearAnimation()
         pauseIndicator.alpha = 1.0f
         pauseIndicator.visibility = View.GONE
+        styleTrackingControls(false)
+        speedAlertText.clearAnimation()
+        speedAlertText.visibility = View.GONE
         isMoving = false
         lastLocation = null
 
@@ -1443,6 +1464,10 @@ val now = System.currentTimeMillis()
 
             if (!isMoving) {
                 isMoving = true
+                automaticallyPaused = false
+                pauseIndicator.clearAnimation()
+                pauseIndicator.alpha = 1.0f
+                pauseIndicator.visibility = View.GONE
                 statusText.text = "GPS AKTIF · MEREKAM PERJALANAN"
                 statusText.setTextColor(green)
             }
