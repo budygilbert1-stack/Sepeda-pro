@@ -82,7 +82,7 @@ class MainActivity : Activity(), LocationListener {
 
     private var currentSpeedKmh = 0.0
     private var maxSpeedKmh = 0.0
-    private var minimumSpeedKmh = 20.0
+    private var minimumSpeedKmh = 0.0
     private var lowSpeedSince = 0L
     private var lastWarningTime = 0L
     private var warningEnabled = true
@@ -167,12 +167,12 @@ class MainActivity : Activity(), LocationListener {
 
         minimumSpeedKmh = warningPreferences.getFloat(
             "minimum_speed",
-            20.0f
+            0.0f
         ).toDouble()
 
         speedIndicatorEnabled = warningPreferences.getBoolean(
             "speed_indicator_enabled",
-            true
+            false
         )
         // Bunyi peringatan otomatis mengikuti pengaturan kecepatan minimum.
         warningEnabled = speedIndicatorEnabled
@@ -257,10 +257,10 @@ private fun styleTrackingControls(isTracking: Boolean) {
             .setPositiveButton("SIMPAN") { _, _ ->
                 val newSpeed = input.text.toString().toDoubleOrNull()
 
-                if (newSpeed == null || newSpeed <= 0.0 || newSpeed > 100.0) {
+                if (newSpeed == null || newSpeed < 0.0 || newSpeed > 100.0) {
                     Toast.makeText(
                         this,
-                        "Masukkan kecepatan antara 0,1 dan 100 km/jam",
+                        "Masukkan kecepatan antara 0,0 dan 100,0 km/jam",
                         Toast.LENGTH_LONG
                     ).show()
                 } else {
