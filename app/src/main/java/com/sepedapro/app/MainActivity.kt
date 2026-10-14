@@ -228,7 +228,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
         container.setPadding(dp(20), dp(8), dp(20), dp(8))
 
         val speedLabel = TextView(this)
-        speedLabel.text = "Atur Kecepatan Minimum (km/jam)"
+        speedLabel.text = "Kecepatan minimum (km/jam)"
         speedLabel.setTextColor(white)
         container.addView(speedLabel)
         container.addView(input)
@@ -240,7 +240,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
         container.addView(soundCheck)
 
         val indicatorCheck = android.widget.CheckBox(this)
-        indicatorCheck.text = "Aktifkan indikator kecepatan"
+        indicatorCheck.text = "Atur kecepatan minimum"
         indicatorCheck.setTextColor(white)
         indicatorCheck.isChecked = speedIndicatorEnabled
         container.addView(indicatorCheck)
@@ -776,7 +776,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
         )
 
         pauseIndicator = TextView(this)
-        pauseIndicator.text = "⏸ DIJEDA"
+        pauseIndicator.text = "⏸"
         pauseIndicator.textSize = 14f
         pauseIndicator.gravity = Gravity.CENTER
         pauseIndicator.setTextColor(Color.RED)
