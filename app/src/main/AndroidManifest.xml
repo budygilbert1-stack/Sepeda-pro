@@ -7,7 +7,7 @@
 
     <application
         android:allowBackup="true"
-        android:label="Sepeda Pro"
+        android:label="Sapedahan"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:supportsRtl="true"
         android:usesCleartextTraffic="true">

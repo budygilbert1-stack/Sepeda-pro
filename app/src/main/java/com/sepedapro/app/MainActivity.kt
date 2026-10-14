@@ -64,6 +64,8 @@ class MainActivity : Activity(), LocationListener {
     private lateinit var mapSpeedText: TextView
     private lateinit var gpsIndicator: TextView
     private lateinit var speedIndicator: TextView
+    private lateinit var pauseIndicator: TextView
+    private var speedIndicatorEnabled = true
 
     private var tracking = false
     private var manuallyPaused = false
@@ -159,6 +161,11 @@ class MainActivity : Activity(), LocationListener {
             true
         )
 
+        speedIndicatorEnabled = warningPreferences.getBoolean(
+            "speed_indicator_enabled",
+            true
+        )
+
 
 
         warningTone = ToneGenerator(
@@ -232,6 +239,12 @@ private fun styleTrackingControls(isTracking: Boolean) {
         soundCheck.isChecked = warningEnabled
         container.addView(soundCheck)
 
+        val indicatorCheck = android.widget.CheckBox(this)
+        indicatorCheck.text = "Aktifkan indikator kecepatan"
+        indicatorCheck.setTextColor(white)
+        indicatorCheck.isChecked = speedIndicatorEnabled
+        container.addView(indicatorCheck)
+
 
         AlertDialog.Builder(this)
             .setTitle("Atur Kecepatan Minimum")
@@ -248,21 +261,23 @@ private fun styleTrackingControls(isTracking: Boolean) {
                 } else {
                     minimumSpeedKmh = newSpeed
                     warningEnabled = soundCheck.isChecked
+                    speedIndicatorEnabled = indicatorCheck.isChecked
 
                     warningPreferences.edit()
                         .putFloat("minimum_speed", newSpeed.toFloat())
                         .putBoolean("warning_enabled", warningEnabled)
+                        .putBoolean("speed_indicator_enabled", speedIndicatorEnabled)
                         .apply()
 
                     lowSpeedSince = 0L
-
                     speedIndicator.clearAnimation()
-		    speedIndicator.visibility = View.VISIBLE
-		    speedIndicator.text = String.format(
-    java.util.Locale.US,
-    "⚡ %.1f km/j",
-    minimumSpeedKmh
-)
+                    speedIndicator.alpha = 1.0f
+                    speedIndicator.text = String.format(
+                        java.util.Locale.US,
+                        "⚡ %.1f km/j",
+                        minimumSpeedKmh
+                    )
+                    speedIndicator.visibility = if (speedIndicatorEnabled) View.VISIBLE else View.GONE
                     Toast.makeText(
                         this,
                         "Pengaturan kecepatan berhasil disimpan",
@@ -600,8 +615,25 @@ private fun styleTrackingControls(isTracking: Boolean) {
             currentSpeedKmh = 0.0
             speedText.text = "0.0"
             speedIndicator.clearAnimation()
-            speedIndicator.text = "0.0 km/j"
+            speedIndicator.alpha = 1.0f
+            speedIndicator.text = String.format(
+                java.util.Locale.US,
+                "⚡ %.1f km/j",
+                minimumSpeedKmh
+            )
+            speedIndicator.visibility = if (speedIndicatorEnabled) View.VISIBLE else View.GONE
             speedIndicator.setTextColor(Color.RED)
+
+            pauseIndicator.visibility = View.VISIBLE
+            pauseIndicator.alpha = 1.0f
+            pauseIndicator.clearAnimation()
+            pauseIndicator.startAnimation(
+                AlphaAnimation(1.0f, 0.15f).apply {
+                    duration = 500L
+                    repeatMode = AlphaAnimation.REVERSE
+                    repeatCount = AlphaAnimation.INFINITE
+                }
+            )
 	    speedAlertText.clearAnimation()
             speedAlertText.visibility = View.GONE
             lowSpeedSince = 0L
@@ -634,6 +666,9 @@ private fun styleTrackingControls(isTracking: Boolean) {
                 )
 
                 manuallyPaused = false
+                pauseIndicator.clearAnimation()
+                pauseIndicator.alpha = 1.0f
+                pauseIndicator.visibility = View.GONE
                 statusText.text = "MENCARI SINYAL GPS..."
                 statusText.setTextColor(green)
 
@@ -730,10 +765,25 @@ private fun styleTrackingControls(isTracking: Boolean) {
         speedIndicator.gravity = Gravity.CENTER
         speedIndicator.setTextColor(Color.GREEN)
         speedIndicator.setPadding(dp(8), dp(4), dp(8), dp(4))
-        speedIndicator.visibility = View.VISIBLE
+        speedIndicator.visibility = if (speedIndicatorEnabled) View.VISIBLE else View.GONE
 
         navigation.addView(
             speedIndicator,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                dp(48)
+            )
+        )
+
+        pauseIndicator = TextView(this)
+        pauseIndicator.text = "⏸ DIJEDA"
+        pauseIndicator.textSize = 14f
+        pauseIndicator.gravity = Gravity.CENTER
+        pauseIndicator.setTextColor(Color.RED)
+        pauseIndicator.setPadding(dp(8), dp(4), dp(8), dp(4))
+        pauseIndicator.visibility = View.GONE
+        navigation.addView(
+            pauseIndicator,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 dp(48)
@@ -757,7 +807,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
         speedRoot.addView(controlRow, matchWrap())
         speedRoot.addView(info, matchWrap())
         val brandText = TextView(this)
-        brandText.text = "Sepeda Pro"
+        brandText.text = "Sapedahan"
         brandText.textSize = 11f
         brandText.setTextColor(muted)
         brandText.gravity = Gravity.CENTER
@@ -1189,6 +1239,17 @@ private fun styleTrackingControls(isTracking: Boolean) {
         lastTickTime = startTime
         tracking = true
         manuallyPaused = false
+        pauseIndicator.clearAnimation()
+        pauseIndicator.alpha = 1.0f
+        pauseIndicator.visibility = View.GONE
+        speedIndicator.clearAnimation()
+        speedIndicator.alpha = 1.0f
+        speedIndicator.visibility = if (speedIndicatorEnabled) View.VISIBLE else View.GONE
+        speedIndicator.text = String.format(
+            java.util.Locale.US,
+            "⚡ %.1f km/j",
+            minimumSpeedKmh
+        )
         styleTrackingControls(true)
 
         speedText.text = "0.0"
@@ -1240,7 +1301,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
             }
         }
 
-        if (tracking) {
+        if (tracking && !manuallyPaused) {
             val now = System.currentTimeMillis()
             val delta = ((now - lastTickTime) / 1000L)
                 .coerceAtLeast(0L)
@@ -1262,6 +1323,9 @@ private fun styleTrackingControls(isTracking: Boolean) {
         styleTrackingControls(false)
         speedAlertText.clearAnimation()
         speedAlertText.visibility = View.GONE
+        pauseIndicator.clearAnimation()
+        pauseIndicator.alpha = 1.0f
+        pauseIndicator.visibility = View.GONE
         isMoving = false
         lastLocation = null
 
@@ -1271,14 +1335,14 @@ private fun styleTrackingControls(isTracking: Boolean) {
         currentSpeedKmh = 0.0
 
         speedIndicator.clearAnimation()
-        speedIndicator.text = "0.0 km/j"
-        speedIndicator.setTextColor(Color.RED)
-        speedIndicator.visibility = View.VISIBLE
+        speedIndicator.alpha = 1.0f
         speedIndicator.text = String.format(
             java.util.Locale.US,
             "⚡ %.1f km/j",
             minimumSpeedKmh
         )
+        speedIndicator.setTextColor(Color.RED)
+        speedIndicator.visibility = if (speedIndicatorEnabled) View.VISIBLE else View.GONE
 
         statusText.text = "PERJALANAN SELESAI"
         statusText.setTextColor(muted)
@@ -1344,28 +1408,33 @@ private fun styleTrackingControls(isTracking: Boolean) {
 
 currentSpeedKmh = (speedMps * 3.6).coerceAtLeast(0.0)
 
-// Perbarui indikator batas kecepatan minimum
-speedIndicator.visibility = View.VISIBLE
-speedIndicator.text = String.format(
-    java.util.Locale.US,
-    "⚡ %.1f km/j",
-    minimumSpeedKmh
-)
+// Perbarui indikator batas kecepatan minimum.
+if (speedIndicatorEnabled) {
+    speedIndicator.visibility = View.VISIBLE
+    speedIndicator.text = String.format(
+        java.util.Locale.US,
+        "⚡ %.1f km/j",
+        minimumSpeedKmh
+    )
 
-if (currentSpeedKmh >= minimumSpeedKmh) {
-    speedIndicator.clearAnimation()
-    speedIndicator.setTextColor(Color.GREEN)
-    speedIndicator.alpha = 1.0f
-} else {
-    speedIndicator.setTextColor(Color.RED)
-
-    if (speedIndicator.animation == null) {
-        val blink = AlphaAnimation(1.0f, 0.15f)
-        blink.duration = 500L
-        blink.repeatMode = AlphaAnimation.REVERSE
-        blink.repeatCount = AlphaAnimation.INFINITE
-        speedIndicator.startAnimation(blink)
+    if (currentSpeedKmh >= minimumSpeedKmh) {
+        speedIndicator.clearAnimation()
+        speedIndicator.alpha = 1.0f
+        speedIndicator.setTextColor(Color.GREEN)
+    } else {
+        speedIndicator.setTextColor(Color.RED)
+        if (speedIndicator.animation == null) {
+            val blink = AlphaAnimation(1.0f, 0.15f)
+            blink.duration = 500L
+            blink.repeatMode = AlphaAnimation.REVERSE
+            blink.repeatCount = AlphaAnimation.INFINITE
+            speedIndicator.startAnimation(blink)
+        }
     }
+} else {
+    speedIndicator.clearAnimation()
+    speedIndicator.alpha = 1.0f
+    speedIndicator.visibility = View.GONE
 }
 
 
