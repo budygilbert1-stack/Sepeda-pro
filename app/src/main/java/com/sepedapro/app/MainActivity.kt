@@ -38,6 +38,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.ArrayDeque
 import java.util.Locale
 
 class MainActivity : Activity(), LocationListener {
@@ -79,6 +80,18 @@ class MainActivity : Activity(), LocationListener {
     private var totalElapsedTime = 0L
     private var startTime = 0L
     private var lastTickTime = 0L
+
+    private lateinit var gradientText: TextView
+    private var currentGradientPercent = 0.0
+
+    private data class GradientSample(
+        val distanceMeters: Double,
+        val altitudeMeters: Double
+    )
+
+    private val gradientSamples = ArrayDeque<GradientSample>()
+    private val smoothedGradients = ArrayDeque<Double>()
+    private var gradientDistanceMeters = 0.0
 
     private var currentSpeedKmh = 0.0
     private var maxSpeedKmh = 0.0
@@ -511,11 +524,29 @@ private fun styleTrackingControls(isTracking: Boolean) {
             }
         )
 
+
+
         root.addView(
             durationMaxRow,
             matchWrap().apply {
                 bottomMargin = dp(8)
             }
+        )
+
+        val gradientCard = createCard()
+        gradientCard.setPadding(dp(8), dp(8), dp(8), dp(8))
+        gradientCard.addView(
+            createLabel("GRADIEN JALAN"),
+            matchWrap().apply { bottomMargin = dp(5) }
+        )
+
+        gradientText = createStatValue("--,-%")
+        gradientText.textSize = 20f
+        gradientCard.addView(gradientText, matchWrap())
+
+        root.addView(
+            gradientCard,
+            matchWrap().apply { bottomMargin = dp(8) }
         )
 
         statusText = TextView(this)
@@ -607,6 +638,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
             if (!tracking || manuallyPaused) return@setOnClickListener
 
             manuallyPaused = true
+            resetGradientSamples()
 
             if (hasLocationPermission()) {
                 try {
@@ -660,6 +692,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
 
             lastTickTime = System.currentTimeMillis()
             lastLocation = null
+            resetGradientSamples()
 
             try {
                 locationManager.requestLocationUpdates(
@@ -1156,6 +1189,85 @@ private fun styleTrackingControls(isTracking: Boolean) {
         )
     }
 
+
+    private fun resetGradientSamples() {
+        gradientSamples.clear()
+        smoothedGradients.clear()
+        gradientDistanceMeters = 0.0
+    }
+
+    private fun updateGradient(location: Location, previous: Location?) {
+        if (!location.hasAltitude() || location.accuracy > 20f) return
+
+        val altitude = location.altitude
+        if (!altitude.isFinite()) return
+
+        val previousAltitude = previous?.takeIf {
+            it.hasAltitude() && it.accuracy <= 20f
+        }
+
+        if (previousAltitude != null) {
+            val segmentDistance =
+                previousAltitude.distanceTo(location).toDouble()
+
+            if (segmentDistance in 1.0..30.0) {
+                gradientDistanceMeters += segmentDistance
+            }
+        }
+
+        val sample = GradientSample(
+            distanceMeters = gradientDistanceMeters,
+            altitudeMeters = altitude
+        )
+
+        val last = gradientSamples.peekLast()
+        if (last == null) {
+            gradientSamples.addLast(sample)
+            return
+        }
+
+        val horizontalDistance =
+            sample.distanceMeters - last.distanceMeters
+
+        if (horizontalDistance < 25.0) return
+
+        val altitudeChange = sample.altitudeMeters - last.altitudeMeters
+
+        if (horizontalDistance <= 100.0 &&
+            kotlin.math.abs(altitudeChange) <= 8.0
+        ) {
+            val slope = altitudeChange / horizontalDistance * 100.0
+
+            if (slope.isFinite() && kotlin.math.abs(slope) <= 25.0) {
+                smoothedGradients.addLast(slope)
+                while (smoothedGradients.size > 3) {
+                    smoothedGradients.removeFirst()
+                }
+
+                val result = smoothedGradients.average()
+                    .let { if (kotlin.math.abs(it) < 0.5) 0.0 else it }
+
+                currentGradientPercent = result
+                gradientText.text = if (result == 0.0) {
+                    "0,0% • RELATIF DATAR"
+                } else {
+                    val number = String.format(
+                        java.util.Locale("in", "ID"),
+                        "%+.1f%%",
+                        result
+                    )
+                    "$number • " +
+                        if (result > 0) "MENANJAK" else "MENURUN"
+                }
+            }
+        }
+
+        gradientSamples.addLast(sample)
+        while (gradientSamples.size > 2) {
+            gradientSamples.removeFirst()
+        }
+    }
+
     private fun updateStatistics() {
         durationText.text = formatDuration(totalElapsedTime)
         movingText.text = formatDuration(totalMovingTime)
@@ -1238,6 +1350,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
         isMoving = false
         belowThresholdSince = 0L
         aboveThresholdSince = 0L
+        resetGradientSamples()
         lastLocation = null
 
         routeCoordinates.clear()
@@ -1410,6 +1523,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
             }
         }
 
+        updateGradient(location, previous)
         lastLocation = location
 
         val speedMps = if (location.hasSpeed()) {
