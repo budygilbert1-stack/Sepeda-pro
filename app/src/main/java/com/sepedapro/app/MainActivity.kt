@@ -842,6 +842,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
         speedRoot.addView(speedCard, matchWrap())
         speedRoot.addView(distanceAverageRow, matchWrap())
         speedRoot.addView(durationMaxRow, matchWrap())
+        speedRoot.addView(gradientCard, matchWrap())
         speedRoot.addView(controlRow, matchWrap())
         speedRoot.addView(info, matchWrap())
         val brandText = TextView(this)
