@@ -904,20 +904,64 @@ private fun styleTrackingControls(isTracking: Boolean) {
         speedRoot.addView(speedCard, matchWrap())
         speedRoot.addView(distanceAverageRow, matchWrap())
         speedRoot.addView(durationMaxRow, matchWrap())
-        speedRoot.addView(gradientCard, matchWrap())
-        speedRoot.addView(elevationRow, matchWrap())
+
+        // Baris pertama: Gradien Jalan | Elevation Gain
+        val gradientElevationRow = LinearLayout(this)
+        gradientElevationRow.orientation = LinearLayout.HORIZONTAL
+        gradientElevationRow.weightSum = 2f
+
+        // Lepaskan kartu dari induk lama sebelum dipindahkan.
+        (gradientCard.parent as? android.view.ViewGroup)?.removeView(gradientCard)
+        (elevationGainCard.parent as? android.view.ViewGroup)?.removeView(elevationGainCard)
+
+        gradientElevationRow.addView(
+            gradientCard,
+            LinearLayout.LayoutParams(0, dp(78), 1f).apply {
+                marginEnd = dp(5)
+            }
+        )
+        gradientElevationRow.addView(
+            elevationGainCard,
+            LinearLayout.LayoutParams(0, dp(78), 1f).apply {
+                marginStart = dp(5)
+            }
+        )
+        speedRoot.addView(
+            gradientElevationRow,
+            matchWrap().apply { bottomMargin = dp(8) }
+        )
+
+        // Baris kedua: Ketinggian (MDPL) | Suhu Lingkungan
+        val altitudeWeatherRow = LinearLayout(this)
+        altitudeWeatherRow.orientation = LinearLayout.HORIZONTAL
+        altitudeWeatherRow.weightSum = 2f
+
+        (altitudeCard.parent as? android.view.ViewGroup)?.removeView(altitudeCard)
+        altitudeWeatherRow.addView(
+            altitudeCard,
+            LinearLayout.LayoutParams(0, dp(78), 1f).apply {
+                marginEnd = dp(5)
+            }
+        )
 
         val weatherCard = createCard()
-        weatherCard.setPadding(dp(8), dp(8), dp(8), dp(8))
+        weatherCard.setPadding(dp(6), dp(8), dp(6), dp(8))
         weatherCard.addView(
             createLabel("SUHU LINGKUNGAN"),
             matchWrap().apply { bottomMargin = dp(5) }
         )
         weatherTemperatureText = createStatValue("--.- °C")
-        weatherTemperatureText.textSize = 20f
+        weatherTemperatureText.textSize = 18f
         weatherCard.addView(weatherTemperatureText, matchWrap())
-        speedRoot.addView(
+
+        altitudeWeatherRow.addView(
             weatherCard,
+            LinearLayout.LayoutParams(0, dp(78), 1f).apply {
+                marginStart = dp(5)
+            }
+        )
+        speedRoot.addView(
+            altitudeWeatherRow,
             matchWrap().apply { bottomMargin = dp(8) }
         )
         showCachedWeatherTemperature()
