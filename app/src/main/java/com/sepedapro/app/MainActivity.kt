@@ -1298,13 +1298,109 @@ private fun styleTrackingControls(isTracking: Boolean) {
             }
         }
 
+        val searchLocationButton = createMapControlButton(
+            "🔍",
+            "Cari lokasi pada peta"
+        ) {
+            val searchInput = EditText(this).apply {
+                hint = "Nama tempat, jalan, atau kota"
+                setSingleLine(true)
+                setPadding(dp(16), dp(8), dp(16), dp(8))
+            }
+
+            val searchDialog = AlertDialog.Builder(this)
+                .setTitle("Cari lokasi")
+                .setView(searchInput)
+                .setNegativeButton("Batal", null)
+                .setPositiveButton("Cari", null)
+                .create()
+
+            searchDialog.setOnShowListener {
+                searchDialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                    .setOnClickListener {
+                        val query = searchInput.text.toString().trim()
+
+                        if (query.isEmpty()) {
+                            searchInput.error = "Masukkan nama lokasi"
+                            return@setOnClickListener
+                        }
+
+                        searchDialog.dismiss()
+                        Toast.makeText(
+                            this,
+                            "Mencari lokasi...",
+                            Toast.LENGTH_SHORT
+                        ).show()
+
+                        locationHeaderExecutor.execute {
+                            val results = try {
+                                Geocoder(this, Locale("id", "ID"))
+                                    .getFromLocationName(query, 5)
+                                    ?: emptyList()
+                            } catch (_: Exception) {
+                                emptyList()
+                            }
+
+                            runOnUiThread {
+                                if (isFinishing || isDestroyed) return@runOnUiThread
+
+                                if (results.isEmpty()) {
+                                    Toast.makeText(
+                                        this,
+                                        "Lokasi tidak ditemukan. Periksa koneksi internet atau nama tempat.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                    return@runOnUiThread
+                                }
+
+                                val labels = results.mapIndexed { index, address ->
+                                    val line = try {
+                                        address.getAddressLine(0)
+                                    } catch (_: Exception) {
+                                        null
+                                    }
+                                    line ?: address.featureName
+                                        ?: "$query (hasil ${index + 1})"
+                                }
+
+                                AlertDialog.Builder(this)
+                                    .setTitle("Pilih lokasi")
+                                    .setItems(labels.toTypedArray()) { _, which ->
+                                        if (which in results.indices) {
+                                            val address = results[which]
+                                            val point = GeoPoint(
+                                                address.latitude,
+                                                address.longitude
+                                            )
+                                            map.controller.setZoom(17.0)
+                                            map.controller.animateTo(point)
+                                            map.invalidate()
+
+                                            Toast.makeText(
+                                                this,
+                                                "Peta dipindahkan ke lokasi pilihan.",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    }
+                                    .setNegativeButton("Batal", null)
+                                    .show()
+                            }
+                        }
+                    }
+            }
+
+            searchDialog.show()
+        }
+
         val controlSize = dp(48)
         val controlGap = dp(6)
 
         for (button in listOf(
             zoomInButton,
             zoomOutButton,
-            manualLocationButton
+            manualLocationButton,
+            searchLocationButton
         )) {
             mapControls.addView(
                 button,
