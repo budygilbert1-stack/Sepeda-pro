@@ -82,7 +82,14 @@ class MainActivity : Activity(), LocationListener {
     private var lastTickTime = 0L
 
     private lateinit var gradientText: TextView
+    private lateinit var altitudeText: TextView
+    private lateinit var elevationGainText: TextView
     private var currentGradientPercent = 0.0
+
+    private var currentAltitudeMeters: Double? = null
+    private var totalElevationGainMeters = 0.0
+    private var lastElevationBaselineMeters: Double? = null
+    private val elevationSamples = ArrayDeque<Double>()
 
     private data class GradientSample(
         val distanceMeters: Double,
@@ -546,6 +553,49 @@ private fun styleTrackingControls(isTracking: Boolean) {
 
         root.addView(
             gradientCard,
+            matchWrap().apply { bottomMargin = dp(8) }
+        )
+
+        val elevationRow = LinearLayout(this)
+        elevationRow.orientation = LinearLayout.HORIZONTAL
+        elevationRow.weightSum = 2f
+
+        val altitudeCard = createCard()
+        altitudeCard.setPadding(dp(6), dp(8), dp(6), dp(8))
+        altitudeCard.addView(
+            createLabel("KETINGGIAN (MDPL)"),
+            matchWrap().apply { bottomMargin = dp(5) }
+        )
+        altitudeText = createStatValue("-- mdpl")
+        altitudeText.textSize = 18f
+        altitudeCard.addView(altitudeText, matchWrap())
+
+        elevationRow.addView(
+            altitudeCard,
+            LinearLayout.LayoutParams(0, dp(78), 1f).apply {
+                marginEnd = dp(5)
+            }
+        )
+
+        val elevationGainCard = createCard()
+        elevationGainCard.setPadding(dp(6), dp(8), dp(6), dp(8))
+        elevationGainCard.addView(
+            createLabel("ELEVATION GAIN"),
+            matchWrap().apply { bottomMargin = dp(5) }
+        )
+        elevationGainText = createStatValue("0 m")
+        elevationGainText.textSize = 18f
+        elevationGainCard.addView(elevationGainText, matchWrap())
+
+        elevationRow.addView(
+            elevationGainCard,
+            LinearLayout.LayoutParams(0, dp(78), 1f).apply {
+                marginStart = dp(5)
+            }
+        )
+
+        root.addView(
+            elevationRow,
             matchWrap().apply { bottomMargin = dp(8) }
         )
 
@@ -1197,6 +1247,70 @@ private fun styleTrackingControls(isTracking: Boolean) {
         gradientDistanceMeters = 0.0
     }
 
+    private fun resetElevation() {
+        currentAltitudeMeters = null
+        totalElevationGainMeters = 0.0
+        lastElevationBaselineMeters = null
+        elevationSamples.clear()
+
+        if (::altitudeText.isInitialized) {
+            altitudeText.text = "-- mdpl"
+        }
+        if (::elevationGainText.isInitialized) {
+            elevationGainText.text = "0 m"
+        }
+    }
+
+    private fun updateElevation(location: Location) {
+        if (!location.hasAltitude() || location.accuracy > 15f) return
+
+        val altitude = location.altitude
+        if (!altitude.isFinite() || altitude !in -500.0..9000.0) return
+
+        // Jika akurasi vertikal tersedia, abaikan sampel yang terlalu buruk.
+        if (location.hasVerticalAccuracy() &&
+            location.verticalAccuracyMeters > 10f
+        ) return
+
+        elevationSamples.addLast(altitude)
+        while (elevationSamples.size > 5) {
+            elevationSamples.removeFirst()
+        }
+
+        // Median dari sampel terakhir membantu menekan lonjakan GPS.
+        val sorted = elevationSamples.toList().sorted()
+        val filteredAltitude = sorted[sorted.size / 2]
+
+        currentAltitudeMeters = filteredAltitude
+        altitudeText.text = String.format(
+            Locale.US,
+            "%.0f mdpl",
+            filteredAltitude
+        )
+
+        val baseline = lastElevationBaselineMeters
+        if (baseline == null) {
+            lastElevationBaselineMeters = filteredAltitude
+        } else {
+            val change = filteredAltitude - baseline
+
+            // Kenaikan kecil diabaikan untuk mengurangi noise.
+            if (change >= 3.0) {
+                totalElevationGainMeters += change
+                lastElevationBaselineMeters = filteredAltitude
+            } else if (change <= -3.0) {
+                // Saat turun, perbarui acuan tanpa mengurangi total gain.
+                lastElevationBaselineMeters = filteredAltitude
+            }
+        }
+
+        elevationGainText.text = String.format(
+            Locale.US,
+            "%.0f m",
+            totalElevationGainMeters
+        )
+    }
+
     private fun updateGradient(location: Location, previous: Location?) {
         if (!location.hasAltitude() || location.accuracy > 15f) return
 
@@ -1352,6 +1466,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
         belowThresholdSince = 0L
         aboveThresholdSince = 0L
         resetGradientSamples()
+        resetElevation()
         lastLocation = null
 
         routeCoordinates.clear()
@@ -1524,6 +1639,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
             }
         }
 
+        updateElevation(location)
         updateGradient(location, previous)
         lastLocation = location
 
