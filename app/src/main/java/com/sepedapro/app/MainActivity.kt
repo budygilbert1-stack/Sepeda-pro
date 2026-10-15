@@ -33,6 +33,7 @@ import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.gestures.RotationGestureOverlay
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 import org.json.JSONArray
@@ -49,6 +50,7 @@ class MainActivity : Activity(), LocationListener {
 
     private lateinit var locationManager: LocationManager
     private lateinit var map: MapView
+    private var hasAutoZoomedToGps = false
     private lateinit var mapFrame: FrameLayout
     private lateinit var locationHeaderText: TextView
     private val locationHeaderExecutor = Executors.newSingleThreadExecutor()
@@ -392,6 +394,10 @@ private fun styleTrackingControls(isTracking: Boolean) {
         map = MapView(this)
         map.setTileSource(TileSourceFactory.MAPNIK)
         map.setMultiTouchControls(true)
+        RotationGestureOverlay(map).also { rotationOverlay ->
+            rotationOverlay.isEnabled = true
+            map.overlays.add(rotationOverlay)
+        }
         map.isTilesScaledToDpi = true
         map.isTilesScaledToDpi = true
         map.controller.setZoom(15.0)
@@ -1735,6 +1741,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
     }
 
     private fun startTracking() {
+        hasAutoZoomedToGps = false
         if (!hasLocationPermission()) {
             requestPermissions(
                 arrayOf(
@@ -1975,6 +1982,11 @@ private fun styleTrackingControls(isTracking: Boolean) {
         )
 
         bikeMarker.position = point
+        if (!hasAutoZoomedToGps) {
+            map.controller.setZoom(18.0)
+            map.controller.animateTo(point)
+            hasAutoZoomedToGps = true
+        }
         map.invalidate()
 
         // GPS pratinjau: tampilkan posisi tanpa merekam perjalanan.
