@@ -1187,6 +1187,125 @@ private fun styleTrackingControls(isTracking: Boolean) {
 
         mapFrame.addView(mapSpeedContainer, overlayParams)
 
+        // Kontrol peta: zoom in, zoom out, dan lokasi GPS manual.
+        val mapControls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+
+        fun createMapControlButton(
+            label: String,
+            description: String,
+            onClick: () -> Unit
+        ): TextView {
+            return TextView(this).apply {
+                text = label
+                textSize = 22f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                contentDescription = description
+                setTextColor(white)
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dp(12).toFloat()
+                    setColor(cardColor)
+                    setStroke(dp(1), green)
+                }
+                setOnClickListener { onClick() }
+            }
+        }
+
+        val zoomInButton = createMapControlButton(
+            "+",
+            "Perbesar peta"
+        ) {
+            map.controller.zoomIn()
+        }
+
+        val zoomOutButton = createMapControlButton(
+            "−",
+            "Perkecil peta"
+        ) {
+            map.controller.zoomOut()
+        }
+
+        val manualLocationButton = createMapControlButton(
+            "📍",
+            "Minta lokasi GPS terbaru"
+        ) {
+            if (!hasLocationPermission()) {
+                requestPermissions(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    ),
+                    permissionCode
+                )
+            } else {
+                try {
+                    if (locationManager.isProviderEnabled(
+                            LocationManager.GPS_PROVIDER
+                        )
+                    ) {
+                        locationManager.requestLocationUpdates(
+                            LocationManager.GPS_PROVIDER,
+                            1000L,
+                            0f,
+                            this,
+                            Looper.getMainLooper()
+                        )
+                        Toast.makeText(
+                            this,
+                            "Meminta lokasi GPS terbaru...",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        Toast.makeText(
+                            this,
+                            "Aktifkan GPS terlebih dahulu.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                } catch (_: SecurityException) {
+                    Toast.makeText(
+                        this,
+                        "Izin lokasi belum tersedia.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+
+        val controlSize = dp(48)
+        val controlGap = dp(6)
+
+        for (button in listOf(
+            zoomInButton,
+            zoomOutButton,
+            manualLocationButton
+        )) {
+            mapControls.addView(
+                button,
+                LinearLayout.LayoutParams(
+                    controlSize,
+                    controlSize
+                ).apply {
+                    marginEnd = controlGap
+                }
+            )
+        }
+
+        mapFrame.addView(
+            mapControls,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM or Gravity.END
+            ).apply {
+                setMargins(dp(8), dp(8), dp(12), dp(16))
+            }
+        )
+
         var dragStartX = 0f
         var dragStartY = 0f
         var overlayStartLeft = 0
