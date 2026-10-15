@@ -1018,6 +1018,44 @@ private fun styleTrackingControls(isTracking: Boolean) {
             dashboardNavigation.visibility = View.GONE
             mapFrame.visibility = View.VISIBLE
             map.invalidate()
+
+            // Minta GPS saat Maps dibuka, tanpa memulai perekaman.
+            if (hasLocationPermission()) {
+                try {
+                    if (locationManager.isProviderEnabled(
+                            LocationManager.GPS_PROVIDER
+                        )
+                    ) {
+                        locationManager.requestLocationUpdates(
+                            LocationManager.GPS_PROVIDER,
+                            1000L,
+                            1f,
+                            this,
+                            Looper.getMainLooper()
+                        )
+                    } else {
+                        Toast.makeText(
+                            this,
+                            "Aktifkan GPS untuk melihat posisi.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                } catch (_: SecurityException) {
+                    Toast.makeText(
+                        this,
+                        "Izin lokasi belum tersedia.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            } else {
+                requestPermissions(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    ),
+                    permissionCode
+                )
+            }
         }
 
         openMapsButton.background = LayerDrawable(
@@ -1732,11 +1770,11 @@ private fun styleTrackingControls(isTracking: Boolean) {
     }
 
     override fun onLocationChanged(location: Location) {
-        if (!tracking || manuallyPaused) return
-
         if (location.accuracy > 30f) {
-            statusText.text = "MENUNGGU GPS LEBIH AKURAT"
-            statusText.setTextColor(muted)
+            if (tracking && !manuallyPaused) {
+                statusText.text = "MENUNGGU GPS LEBIH AKURAT"
+                statusText.setTextColor(muted)
+            }
             return
         }
 
@@ -1746,6 +1784,16 @@ private fun styleTrackingControls(isTracking: Boolean) {
         )
 
         bikeMarker.position = point
+        map.invalidate()
+
+        // GPS pratinjau: tampilkan posisi tanpa merekam perjalanan.
+        if (!tracking || manuallyPaused) {
+            if (mapFrame.visibility == View.VISIBLE) {
+                map.controller.animateTo(point)
+            }
+            return
+        }
+
         routeLine.addPoint(point)
         routeCoordinates.add(point)
 
