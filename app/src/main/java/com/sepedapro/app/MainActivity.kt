@@ -1198,20 +1198,20 @@ private fun styleTrackingControls(isTracking: Boolean) {
     }
 
     private fun updateGradient(location: Location, previous: Location?) {
-        if (!location.hasAltitude() || location.accuracy > 20f) return
+        if (!location.hasAltitude() || location.accuracy > 15f) return
 
         val altitude = location.altitude
         if (!altitude.isFinite()) return
 
         val previousAltitude = previous?.takeIf {
-            it.hasAltitude() && it.accuracy <= 20f
+            it.hasAltitude() && it.accuracy <= 15f
         }
 
         if (previousAltitude != null) {
             val segmentDistance =
                 previousAltitude.distanceTo(location).toDouble()
 
-            if (segmentDistance in 1.0..30.0) {
+            if (segmentDistance in 2.0..25.0) {
                 gradientDistanceMeters += segmentDistance
             }
         }
@@ -1230,23 +1230,23 @@ private fun styleTrackingControls(isTracking: Boolean) {
         val horizontalDistance =
             sample.distanceMeters - last.distanceMeters
 
-        if (horizontalDistance < 25.0) return
+        if (horizontalDistance < 60.0) return
 
         val altitudeChange = sample.altitudeMeters - last.altitudeMeters
 
-        if (horizontalDistance <= 100.0 &&
-            kotlin.math.abs(altitudeChange) <= 8.0
+        if (horizontalDistance <= 120.0 &&
+            kotlin.math.abs(altitudeChange) <= 6.0
         ) {
             val slope = altitudeChange / horizontalDistance * 100.0
 
-            if (slope.isFinite() && kotlin.math.abs(slope) <= 25.0) {
+            if (slope.isFinite() && kotlin.math.abs(slope) <= 20.0) {
                 smoothedGradients.addLast(slope)
-                while (smoothedGradients.size > 3) {
+                while (smoothedGradients.size > 5) {
                     smoothedGradients.removeFirst()
                 }
 
                 val result = smoothedGradients.average()
-                    .let { if (kotlin.math.abs(it) < 0.5) 0.0 else it }
+                    .let { if (kotlin.math.abs(it) < 1.5) 0.0 else it }
 
                 currentGradientPercent = result
                 gradientText.text = if (result == 0.0) {
