@@ -40,6 +40,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.ArrayDeque
 import java.util.Locale
+import java.util.concurrent.Executors
+import java.net.URL
+import java.net.HttpURLConnection
 
 class MainActivity : Activity(), LocationListener {
 
@@ -109,6 +112,15 @@ class MainActivity : Activity(), LocationListener {
 
     private lateinit var warningTone: ToneGenerator
     private lateinit var warningPreferences: SharedPreferences
+
+    private lateinit var weatherTemperatureText: TextView
+    private val weatherHandler = Handler(Looper.getMainLooper())
+    private val weatherExecutor = Executors.newSingleThreadExecutor()
+    private val weatherPreferences by lazy {
+        getSharedPreferences("sepeda_weather", MODE_PRIVATE)
+    }
+    private var lastWeatherRequestTime = 0L
+    private val weatherRefreshInterval = 15 * 60 * 1000L
 
 
 
@@ -894,6 +906,22 @@ private fun styleTrackingControls(isTracking: Boolean) {
         speedRoot.addView(durationMaxRow, matchWrap())
         speedRoot.addView(gradientCard, matchWrap())
         speedRoot.addView(elevationRow, matchWrap())
+
+        val weatherCard = createCard()
+        weatherCard.setPadding(dp(8), dp(8), dp(8), dp(8))
+        weatherCard.addView(
+            createLabel("SUHU LINGKUNGAN"),
+            matchWrap().apply { bottomMargin = dp(5) }
+        )
+        weatherTemperatureText = createStatValue("--.- °C")
+        weatherTemperatureText.textSize = 20f
+        weatherCard.addView(weatherTemperatureText, matchWrap())
+        speedRoot.addView(
+            weatherCard,
+            matchWrap().apply { bottomMargin = dp(8) }
+        )
+        showCachedWeatherTemperature()
+
         speedRoot.addView(controlRow, matchWrap())
         speedRoot.addView(info, matchWrap())
         val brandText = TextView(this)
@@ -1246,6 +1274,67 @@ private fun styleTrackingControls(isTracking: Boolean) {
         gradientSamples.clear()
         smoothedGradients.clear()
         gradientDistanceMeters = 0.0
+    }
+
+
+    private fun showCachedWeatherTemperature() {
+        if (!::weatherTemperatureText.isInitialized) return
+        val cached = weatherPreferences.getFloat("temperature_c", Float.NaN)
+        if (!cached.isNaN()) {
+            weatherTemperatureText.text = String.format(
+                Locale.getDefault(), "%.1f °C", cached
+            )
+        }
+    }
+
+    private fun fetchWeatherTemperature(location: Location) {
+        val now = System.currentTimeMillis()
+        if (now - lastWeatherRequestTime < weatherRefreshInterval) return
+        lastWeatherRequestTime = now
+
+        val latitude = location.latitude
+        val longitude = location.longitude
+
+        weatherExecutor.execute {
+            var connection: HttpURLConnection? = null
+            try {
+                val address =
+                    "https://api.open-meteo.com/v1/forecast" +
+                    "?latitude=$latitude&longitude=$longitude" +
+                    "&current=temperature_2m&temperature_unit=celsius"
+
+                connection = URL(address).openConnection() as HttpURLConnection
+                connection.connectTimeout = 10000
+                connection.readTimeout = 10000
+                connection.requestMethod = "GET"
+
+                val response = connection.inputStream.bufferedReader().use {
+                    it.readText()
+                }
+                val temperature = JSONObject(response)
+                    .getJSONObject("current")
+                    .getDouble("temperature_2m")
+
+                if (temperature.isFinite() && temperature in -100.0..70.0) {
+                    weatherPreferences.edit()
+                        .putFloat("temperature_c", temperature.toFloat())
+                        .putLong("temperature_saved_at", System.currentTimeMillis())
+                        .apply()
+
+                    weatherHandler.post {
+                        if (::weatherTemperatureText.isInitialized) {
+                            weatherTemperatureText.text = String.format(
+                                Locale.getDefault(), "%.1f °C", temperature
+                            )
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                weatherHandler.post { showCachedWeatherTemperature() }
+            } finally {
+                connection?.disconnect()
+            }
+        }
     }
 
     private fun resetElevation() {
@@ -1642,6 +1731,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
 
         updateElevation(location)
         updateGradient(location, previous)
+        fetchWeatherTemperature(location)
         lastLocation = location
 
         val speedMps = if (location.hasSpeed()) {
@@ -1998,6 +2088,8 @@ val now = System.currentTimeMillis()
 
     override fun onDestroy() {
         timerHandler.removeCallbacks(timerRunnable)
+        weatherHandler.removeCallbacksAndMessages(null)
+        weatherExecutor.shutdownNow()
 
         if (tracking && hasLocationPermission()) {
             try {
