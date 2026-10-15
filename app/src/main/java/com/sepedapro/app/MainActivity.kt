@@ -48,6 +48,7 @@ class MainActivity : Activity(), LocationListener {
 
     private lateinit var locationManager: LocationManager
     private lateinit var map: MapView
+    private lateinit var mapFrame: FrameLayout
     private lateinit var routeLine: Polyline
     private lateinit var bikeMarker: Marker
 
@@ -978,7 +979,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
 
         speedScroll.addView(speedRoot)
 
-        val mapFrame = FrameLayout(this)
+        mapFrame = FrameLayout(this)
 
         fun createNavigationButton(
             symbol: String,
