@@ -9,6 +9,7 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
 import android.graphics.Typeface
 import android.location.Location
+import android.location.Geocoder
 import android.location.LocationListener
 import android.location.LocationManager
 import android.media.AudioManager
@@ -49,6 +50,11 @@ class MainActivity : Activity(), LocationListener {
     private lateinit var locationManager: LocationManager
     private lateinit var map: MapView
     private lateinit var mapFrame: FrameLayout
+    private lateinit var locationHeaderText: TextView
+    private val locationHeaderExecutor = Executors.newSingleThreadExecutor()
+    private var lastGeocodedLocation: Location? = null
+    private var lastGeocodeAttemptMs = 0L
+    private var lastLocationHeaderLabel = ""
     private lateinit var routeLine: Polyline
     private lateinit var bikeMarker: Marker
 
@@ -350,6 +356,16 @@ private fun styleTrackingControls(isTracking: Boolean) {
             matchWrap().apply {
                 bottomMargin = dp(4)
             }
+        )
+
+        locationHeaderText = TextView(this)
+        locationHeaderText.text = "Mendeteksi lokasi..."
+        locationHeaderText.textSize = 10f
+        locationHeaderText.setTextColor(muted)
+        locationHeaderText.gravity = Gravity.CENTER
+        root.addView(
+            locationHeaderText,
+            matchWrap().apply { bottomMargin = dp(2) }
         )
 
         val subtitle = TextView(this)
@@ -1889,6 +1905,59 @@ private fun styleTrackingControls(isTracking: Boolean) {
         ).show()
     }
 
+
+    private fun updateLocationHeader(location: Location) {
+        val previous = lastGeocodedLocation
+        val now = System.currentTimeMillis()
+
+        if (previous != null &&
+            previous.distanceTo(location) < 250f &&
+            now - lastGeocodeAttemptMs < 60_000L
+        ) return
+
+        lastGeocodeAttemptMs = now
+        lastGeocodedLocation = Location(location)
+
+        locationHeaderExecutor.execute {
+            try {
+                val geocoder = Geocoder(this, Locale("id", "ID"))
+                val addresses = geocoder.getFromLocation(
+                    location.latitude,
+                    location.longitude,
+                    1
+                )
+                val address = addresses?.firstOrNull() ?: return@execute
+
+                val kelurahan = address.subLocality?.trim().orEmpty()
+                val kecamatan = address.locality?.trim().orEmpty()
+                val kotaKabupaten = address.subAdminArea?.trim().orEmpty()
+
+                val wilayah = listOf(kelurahan, kecamatan, kotaKabupaten)
+                    .filter { it.isNotBlank() }
+                    .distinct()
+
+                if (wilayah.isEmpty()) return@execute
+
+                val label = when {
+                    wilayah.size >= 3 ->
+                        "${wilayah[0]}, ${wilayah[1]} – ${wilayah[2]}"
+                    wilayah.size == 2 ->
+                        "${wilayah[0]}, ${wilayah[1]}"
+                    else -> wilayah[0]
+                }
+
+                if (label != lastLocationHeaderLabel) {
+                    runOnUiThread {
+                        lastLocationHeaderLabel = label
+                        locationHeaderText.text = label
+                    }
+                }
+            } catch (_: Exception) {
+                // Lokasi terakhir tetap ditampilkan jika geocoder gagal.
+            }
+        }
+    }
+
     override fun onLocationChanged(location: Location) {
         if (location.accuracy > 30f) {
             if (tracking && !manuallyPaused) {
@@ -1897,6 +1966,8 @@ private fun styleTrackingControls(isTracking: Boolean) {
             }
             return
         }
+
+        updateLocationHeader(location)
 
         val point = GeoPoint(
             location.latitude,
