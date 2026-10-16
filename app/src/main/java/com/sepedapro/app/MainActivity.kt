@@ -64,6 +64,46 @@ class MainActivity : Activity(), LocationListener {
     private lateinit var routeLine: Polyline
     private lateinit var bikeMarker: Marker
 
+    private fun selectMapLocation(point: GeoPoint, title: String = "Lokasi pilihan") {
+        selectedLocationPoint = point
+
+        val marker = selectedLocationMarker ?: Marker(map).also {
+            it.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+            map.overlays.add(it)
+            selectedLocationMarker = it
+        }
+
+        marker.position = point
+        marker.title = title
+        marker.snippet = String.format(
+            Locale.US,
+            "Lintang: %.6f, Bujur: %.6f",
+            point.latitude,
+            point.longitude
+        )
+        marker.setOnMarkerClickListener { clicked, _ ->
+            clicked.showInfoWindow()
+            true
+        }
+
+        map.controller.animateTo(point)
+        map.invalidate()
+
+        Toast.makeText(
+            this,
+            String.format(
+                Locale("id", "ID"),
+                "Lokasi dipilih: %.6f, %.6f",
+                point.latitude,
+                point.longitude
+            ),
+            Toast.LENGTH_LONG
+        ).show()
+    }
+    private var selectedLocationMarker: Marker? = null
+    private var selectedLocationPoint: GeoPoint? = null
+    private var manualMapSelectionEnabled = true
+
     private lateinit var speedText: TextView
     private lateinit var speedAlertText: TextView
     private lateinit var distanceText: TextView
@@ -415,6 +455,21 @@ private fun styleTrackingControls(isTracking: Boolean) {
         bikeMarker = Marker(map)
         bikeMarker.title = "Posisi Sepeda"
         map.overlays.add(bikeMarker)
+
+        val mapEventsReceiver = object : org.osmdroid.events.MapEventsReceiver {
+            override fun singleTapConfirmedHelper(point: GeoPoint): Boolean {
+                selectMapLocation(point, "Lokasi pilihan manual")
+                return true
+            }
+
+            override fun longPressHelper(point: GeoPoint): Boolean {
+                selectMapLocation(point, "Lokasi pilihan manual")
+                return true
+            }
+        }
+        map.overlays.add(
+            org.osmdroid.views.overlay.MapEventsOverlay(mapEventsReceiver)
+        )
 
         root.addView(
             map,
