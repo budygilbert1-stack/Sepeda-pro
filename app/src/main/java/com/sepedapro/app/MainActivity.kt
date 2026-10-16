@@ -1378,7 +1378,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
                         lastSuggestionQuery = query
                         locationHeaderExecutor.execute {
                             val results = try {
-                                Geocoder(this, Locale("id", "ID"))
+                                Geocoder(this@MainActivity, Locale("id", "ID"))
                                     .getFromLocationName(query, 5)
                                     ?: emptyList()
                             } catch (_: Exception) {
@@ -1438,7 +1438,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
 
                         locationHeaderExecutor.execute {
                             val results = try {
-                                Geocoder(this, Locale("id", "ID"))
+                                Geocoder(this@MainActivity, Locale("id", "ID"))
                                     .getFromLocationName(query, 5)
                                     ?: emptyList()
                             } catch (_: Exception) {
