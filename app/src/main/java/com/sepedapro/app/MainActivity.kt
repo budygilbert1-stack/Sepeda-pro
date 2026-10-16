@@ -16,6 +16,10 @@ import android.media.AudioManager
 import android.media.ToneGenerator
 import android.content.SharedPreferences
 import android.widget.EditText
+import android.widget.AutoCompleteTextView
+import android.widget.ArrayAdapter
+import android.text.Editable
+import android.text.TextWatcher
 
 import android.os.Bundle
 import android.os.Handler
@@ -1302,11 +1306,24 @@ private fun styleTrackingControls(isTracking: Boolean) {
             "🔍",
             "Cari lokasi pada peta"
         ) {
-            val searchInput = EditText(this).apply {
-                hint = "Nama tempat, jalan, atau kota"
+            val searchInput = AutoCompleteTextView(this).apply {
+                hint = "Ketik nama tempat, misalnya bale"
                 setSingleLine(true)
+                threshold = 3
                 setPadding(dp(16), dp(8), dp(16), dp(8))
             }
+
+            val suggestionAdapter = ArrayAdapter<String>(
+                this,
+                android.R.layout.simple_dropdown_item_1line,
+                mutableListOf()
+            )
+            searchInput.setAdapter(suggestionAdapter)
+
+            val searchHandler = Handler(Looper.getMainLooper())
+            var searchRequestId = 0
+            var lastSuggestionQuery = ""
+            var suggestionAddresses = emptyList<android.location.Address>()
 
             val searchDialog = AlertDialog.Builder(this)
                 .setTitle("Cari lokasi")
@@ -1314,6 +1331,93 @@ private fun styleTrackingControls(isTracking: Boolean) {
                 .setNegativeButton("Batal", null)
                 .setPositiveButton("Cari", null)
                 .create()
+
+            fun moveToAddress(address: android.location.Address) {
+                val point = GeoPoint(address.latitude, address.longitude)
+                map.controller.setZoom(17.0)
+                map.controller.animateTo(point)
+                map.invalidate()
+                Toast.makeText(
+                    this,
+                    "Peta dipindahkan ke lokasi pilihan.",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+
+            searchInput.setOnItemClickListener { _, _, position, _ ->
+                val chosen = suggestionAddresses.getOrNull(position)
+                if (chosen != null) {
+                    searchDialog.dismiss()
+                    moveToAddress(chosen)
+                }
+            }
+
+            searchInput.addTextChangedListener(object : TextWatcher {
+                private var pending: Runnable? = null
+
+                override fun beforeTextChanged(
+                    s: CharSequence?, start: Int, count: Int, after: Int
+                ) = Unit
+
+                override fun onTextChanged(
+                    s: CharSequence?, start: Int, before: Int, count: Int
+                ) {
+                    val query = s?.toString()?.trim().orEmpty()
+                    searchRequestId++
+                    val requestId = searchRequestId
+
+                    pending?.let { searchHandler.removeCallbacks(it) }
+
+                    if (query.length < 3 || query == lastSuggestionQuery) {
+                        suggestionAdapter.clear()
+                        suggestionAddresses = emptyList()
+                        return
+                    }
+
+                    val task = Runnable {
+                        lastSuggestionQuery = query
+                        locationHeaderExecutor.execute {
+                            val results = try {
+                                Geocoder(this, Locale("id", "ID"))
+                                    .getFromLocationName(query, 5)
+                                    ?: emptyList()
+                            } catch (_: Exception) {
+                                emptyList()
+                            }
+
+                            runOnUiThread {
+                                if (isFinishing || isDestroyed) return@runOnUiThread
+                                if (!searchDialog.isShowing || requestId != searchRequestId) {
+                                    return@runOnUiThread
+                                }
+
+                                val labels = results.mapIndexed { index, address ->
+                                    val line = try {
+                                        address.getAddressLine(0)
+                                    } catch (_: Exception) {
+                                        null
+                                    }
+                                    line ?: address.featureName
+                                        ?: "$query (hasil ${index + 1})"
+                                }
+
+                                suggestionAddresses = results
+                                suggestionAdapter.clear()
+                                suggestionAdapter.addAll(labels)
+                                suggestionAdapter.notifyDataSetChanged()
+
+                                if (labels.isNotEmpty() && searchInput.hasFocus()) {
+                                    searchInput.showDropDown()
+                                }
+                            }
+                        }
+                    }
+                    pending = task
+                    searchHandler.postDelayed(task, 1000L)
+                }
+
+                override fun afterTextChanged(s: Editable?) = Unit
+            })
 
             searchDialog.setOnShowListener {
                 searchDialog.getButton(AlertDialog.BUTTON_POSITIVE)
@@ -1367,20 +1471,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
                                     .setTitle("Pilih lokasi")
                                     .setItems(labels.toTypedArray()) { _, which ->
                                         if (which in results.indices) {
-                                            val address = results[which]
-                                            val point = GeoPoint(
-                                                address.latitude,
-                                                address.longitude
-                                            )
-                                            map.controller.setZoom(17.0)
-                                            map.controller.animateTo(point)
-                                            map.invalidate()
-
-                                            Toast.makeText(
-                                                this,
-                                                "Peta dipindahkan ke lokasi pilihan.",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
+                                            moveToAddress(results[which])
                                         }
                                     }
                                     .setNegativeButton("Batal", null)
@@ -1391,6 +1482,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
             }
 
             searchDialog.show()
+            searchInput.requestFocus()
         }
 
         val controlSize = dp(48)
