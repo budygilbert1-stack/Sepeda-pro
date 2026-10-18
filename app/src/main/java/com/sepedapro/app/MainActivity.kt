@@ -64,6 +64,74 @@ class MainActivity : Activity(), LocationListener {
     private lateinit var routeLine: Polyline
     private lateinit var bikeMarker: Marker
 
+
+    private fun searchLocationsOnline(query: String): List<android.location.Address> {
+        val results = mutableListOf<android.location.Address>()
+
+        try {
+            val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+            val url = URL(
+                "https://photon.komoot.io/api/?q=$encodedQuery&limit=5&lang=en"
+            )
+            val connection = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 8000
+                readTimeout = 8000
+                setRequestProperty("User-Agent", "SepedaPro-Android/1.0")
+                setRequestProperty("Accept", "application/json")
+            }
+
+            try {
+                if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                    val body = connection.inputStream.bufferedReader().use {
+                        it.readText()
+                    }
+                    val features = JSONObject(body).optJSONArray("features")
+                        ?: JSONArray()
+
+                    for (i in 0 until features.length()) {
+                        val feature = features.optJSONObject(i) ?: continue
+                        val geometry = feature.optJSONObject("geometry") ?: continue
+                        val coordinates = geometry.optJSONArray("coordinates")
+                            ?: continue
+                        if (coordinates.length() < 2) continue
+
+                        val longitude = coordinates.optDouble(0, Double.NaN)
+                        val latitude = coordinates.optDouble(1, Double.NaN)
+                        if (!latitude.isFinite() || !longitude.isFinite()) continue
+
+                        val properties = feature.optJSONObject("properties")
+                            ?: JSONObject()
+                        val parts = listOf(
+                            properties.optString("name"),
+                            properties.optString("district"),
+                            properties.optString("city"),
+                            properties.optString("county"),
+                            properties.optString("state"),
+                            properties.optString("country")
+                        ).filter { it.isNotBlank() }.distinct()
+
+                        val label = parts.joinToString(", ")
+                        if (label.isBlank()) continue
+
+                        val address = android.location.Address(Locale("id", "ID"))
+                        address.latitude = latitude
+                        address.longitude = longitude
+                        address.featureName = parts.first()
+                        address.setAddressLine(0, label)
+                        results.add(address)
+                    }
+                }
+            } finally {
+                connection.disconnect()
+            }
+        } catch (_: Exception) {
+            // Jika layanan online gagal, pemanggil dapat mencoba Geocoder Android.
+        }
+
+        return results
+    }
+
     private fun selectMapLocation(point: GeoPoint, title: String = "Lokasi pilihan") {
         selectedLocationPoint = point
 
@@ -1389,14 +1457,14 @@ private fun styleTrackingControls(isTracking: Boolean) {
 
             fun moveToAddress(address: android.location.Address) {
                 val point = GeoPoint(address.latitude, address.longitude)
+                val title = try {
+                    address.getAddressLine(0)
+                } catch (_: Exception) {
+                    null
+                } ?: address.featureName ?: "Lokasi pilihan"
+
                 map.controller.setZoom(17.0)
-                map.controller.animateTo(point)
-                map.invalidate()
-                Toast.makeText(
-                    this,
-                    "Peta dipindahkan ke lokasi pilihan.",
-                    Toast.LENGTH_SHORT
-                ).show()
+                selectMapLocation(point, title)
             }
 
             searchInput.setOnItemClickListener { _, _, position, _ ->
@@ -1432,12 +1500,14 @@ private fun styleTrackingControls(isTracking: Boolean) {
                     val task = Runnable {
                         lastSuggestionQuery = query
                         locationHeaderExecutor.execute {
-                            val results = try {
-                                Geocoder(this@MainActivity, Locale("id", "ID"))
-                                    .getFromLocationName(query, 5)
-                                    ?: emptyList()
-                            } catch (_: Exception) {
-                                emptyList()
+                            val results = searchLocationsOnline(query).ifEmpty {
+                                try {
+                                    Geocoder(this@MainActivity, Locale("id", "ID"))
+                                        .getFromLocationName(query, 5)
+                                        ?: emptyList()
+                                } catch (_: Exception) {
+                                    emptyList()
+                                }
                             }
 
                             runOnUiThread {
@@ -1492,12 +1562,14 @@ private fun styleTrackingControls(isTracking: Boolean) {
                         ).show()
 
                         locationHeaderExecutor.execute {
-                            val results = try {
-                                Geocoder(this@MainActivity, Locale("id", "ID"))
-                                    .getFromLocationName(query, 5)
-                                    ?: emptyList()
-                            } catch (_: Exception) {
-                                emptyList()
+                            val results = searchLocationsOnline(query).ifEmpty {
+                                try {
+                                    Geocoder(this@MainActivity, Locale("id", "ID"))
+                                        .getFromLocationName(query, 5)
+                                        ?: emptyList()
+                                } catch (_: Exception) {
+                                    emptyList()
+                                }
                             }
 
                             runOnUiThread {
