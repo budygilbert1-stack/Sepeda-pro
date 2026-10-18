@@ -55,6 +55,7 @@ class MainActivity : Activity(), LocationListener {
     private lateinit var locationManager: LocationManager
     private lateinit var map: MapView
     private var hasAutoZoomedToGps = false
+    private var userHasChosenMapLocation = false
     private lateinit var mapFrame: FrameLayout
     private lateinit var locationHeaderText: TextView
     private val locationHeaderExecutor = Executors.newSingleThreadExecutor()
@@ -133,6 +134,8 @@ class MainActivity : Activity(), LocationListener {
     }
 
     private fun selectMapLocation(point: GeoPoint, title: String = "Lokasi pilihan") {
+        userHasChosenMapLocation = true
+        hasAutoZoomedToGps = true
         selectedLocationPoint = point
 
         val marker = selectedLocationMarker ?: Marker(map).also {
@@ -1436,16 +1439,36 @@ private fun styleTrackingControls(isTracking: Boolean) {
                 setPadding(dp(16), dp(8), dp(16), dp(8))
             }
 
-            val suggestionAdapter = ArrayAdapter<String>(
+            val suggestionAdapter = object : ArrayAdapter<String>(
                 this,
                 android.R.layout.simple_dropdown_item_1line,
-                mutableListOf()
-            )
+                mutableListOf<String>()
+            ) {
+                private val noFilter = object : android.widget.Filter() {
+                    override fun performFiltering(
+                        constraint: CharSequence?
+                    ): FilterResults {
+                        val results = FilterResults()
+                        val labels = (0 until count).mapNotNull { getItem(it) }
+                        results.values = labels
+                        results.count = labels.size
+                        return results
+                    }
+
+                    override fun publishResults(
+                        constraint: CharSequence?,
+                        results: FilterResults?
+                    ) {
+                        notifyDataSetChanged()
+                    }
+                }
+
+                override fun getFilter(): android.widget.Filter = noFilter
+            }
             searchInput.setAdapter(suggestionAdapter)
 
             val searchHandler = Handler(Looper.getMainLooper())
             var searchRequestId = 0
-            var lastSuggestionQuery = ""
             var suggestionAddresses = emptyList<android.location.Address>()
 
             val searchDialog = AlertDialog.Builder(this)
@@ -1491,14 +1514,13 @@ private fun styleTrackingControls(isTracking: Boolean) {
 
                     pending?.let { searchHandler.removeCallbacks(it) }
 
-                    if (query.length < 3 || query == lastSuggestionQuery) {
+                    if (query.length < 3) {
                         suggestionAdapter.clear()
                         suggestionAddresses = emptyList()
                         return
                     }
 
                     val task = Runnable {
-                        lastSuggestionQuery = query
                         locationHeaderExecutor.execute {
                             val results = searchLocationsOnline(query).ifEmpty {
                                 try {
@@ -2057,6 +2079,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
 
     private fun startTracking() {
         hasAutoZoomedToGps = false
+        userHasChosenMapLocation = false
         if (!hasLocationPermission()) {
             requestPermissions(
                 arrayOf(
@@ -2298,15 +2321,20 @@ private fun styleTrackingControls(isTracking: Boolean) {
 
         bikeMarker.position = point
         if (!hasAutoZoomedToGps) {
-            map.controller.setZoom(18.0)
-            map.controller.animateTo(point)
+            if (!userHasChosenMapLocation) {
+                map.controller.setZoom(18.0)
+                map.controller.animateTo(point)
+            }
             hasAutoZoomedToGps = true
         }
         map.invalidate()
 
-        // GPS pratinjau: tampilkan posisi tanpa merekam perjalanan.
+        // GPS pratinjau: jangan merebut fokus peta jika pengguna
+        // sudah memilih lokasi secara manual atau melalui pencarian.
         if (!tracking || manuallyPaused) {
-            if (mapFrame.visibility == View.VISIBLE) {
+            if (mapFrame.visibility == View.VISIBLE &&
+                !userHasChosenMapLocation
+            ) {
                 map.controller.animateTo(point)
             }
             return
