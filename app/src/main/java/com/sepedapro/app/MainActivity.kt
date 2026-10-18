@@ -1432,7 +1432,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
             val searchInput = AutoCompleteTextView(this).apply {
                 hint = "Ketik nama tempat, misalnya bale"
                 setSingleLine(true)
-                threshold = 3
+                threshold = 1
                 setPadding(dp(16), dp(8), dp(16), dp(8))
             }
 
@@ -1538,7 +1538,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
                         }
                     }
                     pending = task
-                    searchHandler.postDelayed(task, 1000L)
+                    searchHandler.postDelayed(task, 600L)
                 }
 
                 override fun afterTextChanged(s: Editable?) = Unit
