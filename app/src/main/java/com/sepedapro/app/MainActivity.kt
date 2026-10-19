@@ -1100,7 +1100,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
         val weatherCard = createCard()
         weatherCard.setPadding(dp(6), dp(8), dp(6), dp(8))
         weatherCard.addView(
-            createLabel("SUHU LINGKUNGAN"),
+            createLabel("SUHU"),
             matchWrap().apply { bottomMargin = dp(5) }
         )
         weatherTemperatureText = createStatValue("--.- °C")
@@ -2014,17 +2014,11 @@ private fun styleTrackingControls(isTracking: Boolean) {
                     .let { if (kotlin.math.abs(it) < 1.5) 0.0 else it }
 
                 currentGradientPercent = result
-                gradientText.text = if (result == 0.0) {
-                    "0,0% • RELATIF DATAR"
-                } else {
-                    val number = String.format(
-                        java.util.Locale("in", "ID"),
-                        "%+.1f%%",
-                        result
-                    )
-                    "$number • " +
-                        if (result > 0) "MENANJAK" else "MENURUN"
-                }
+                gradientText.text = String.format(
+                    Locale.US,
+                    "%.0f%%",
+                    result
+                )
             }
         }
 
