@@ -55,6 +55,8 @@ class MainActivity : Activity(), LocationListener {
     private lateinit var locationManager: LocationManager
     private lateinit var map: MapView
     private var hasAutoZoomedToGps = false
+    private var mapFollowEnabled = true
+    private lateinit var recenterMapButton: TextView
     private var userHasChosenMapLocation = false
     private lateinit var mapFrame: FrameLayout
     private lateinit var locationHeaderText: TextView
@@ -133,10 +135,41 @@ class MainActivity : Activity(), LocationListener {
         return results
     }
 
+    private fun pauseMapFollowingForManualControl() {
+        mapFollowEnabled = false
+        if (::recenterMapButton.isInitialized) {
+            recenterMapButton.visibility = View.VISIBLE
+        }
+    }
+
+    private fun resumeMapFollowing() {
+        mapFollowEnabled = true
+        userHasChosenMapLocation = false
+
+        if (::recenterMapButton.isInitialized) {
+            recenterMapButton.visibility = View.GONE
+        }
+
+        val location = lastLocation
+        if (location != null) {
+            map.controller.animateTo(
+                GeoPoint(location.latitude, location.longitude)
+            )
+        } else {
+            Toast.makeText(
+                this,
+                "Menunggu lokasi GPS terbaru...",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+        map.invalidate()
+    }
+
     private fun selectMapLocation(point: GeoPoint, title: String = "Lokasi pilihan") {
         userHasChosenMapLocation = true
         hasAutoZoomedToGps = true
         selectedLocationPoint = point
+        pauseMapFollowingForManualControl()
 
         val marker = selectedLocationMarker ?: Marker(map).also {
             it.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
@@ -1371,6 +1404,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
             "+",
             "Perbesar peta"
         ) {
+            pauseMapFollowingForManualControl()
             map.controller.zoomIn()
         }
 
@@ -1378,6 +1412,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
             "−",
             "Perkecil peta"
         ) {
+            pauseMapFollowingForManualControl()
             map.controller.zoomOut()
         }
 
@@ -1664,6 +1699,55 @@ private fun styleTrackingControls(isTracking: Boolean) {
                 setMargins(dp(8), dp(8), dp(12), dp(16))
             }
         )
+
+        recenterMapButton = createMapControlButton(
+            "◎",
+            "Kembali ke posisi sepeda"
+        ) {
+            resumeMapFollowing()
+        }.apply {
+            textSize = 28f
+            visibility = View.GONE
+        }
+
+        mapFrame.addView(
+            recenterMapButton,
+            FrameLayout.LayoutParams(
+                dp(52),
+                dp(52),
+                Gravity.BOTTOM or Gravity.START
+            ).apply {
+                setMargins(dp(12), dp(8), dp(8), dp(16))
+            }
+        )
+
+        // Geser atau cubit peta secara manual untuk menghentikan auto-follow.
+        var mapTouchStartX = 0f
+        var mapTouchStartY = 0f
+
+        map.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    mapTouchStartX = event.x
+                    mapTouchStartY = event.y
+                }
+
+                android.view.MotionEvent.ACTION_POINTER_DOWN -> {
+                    pauseMapFollowingForManualControl()
+                }
+
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    val dx = kotlin.math.abs(event.x - mapTouchStartX)
+                    val dy = kotlin.math.abs(event.y - mapTouchStartY)
+                    if (dx > dp(10) || dy > dp(10)) {
+                        pauseMapFollowingForManualControl()
+                    }
+                }
+            }
+
+            // Jangan mengonsumsi sentuhan; MapView tetap menangani geser dan zoom.
+            false
+        }
 
         var dragStartX = 0f
         var dragStartY = 0f
@@ -2327,7 +2411,8 @@ private fun styleTrackingControls(isTracking: Boolean) {
         // sudah memilih lokasi secara manual atau melalui pencarian.
         if (!tracking || manuallyPaused) {
             if (mapFrame.visibility == View.VISIBLE &&
-                !userHasChosenMapLocation
+                !userHasChosenMapLocation &&
+                mapFollowEnabled
             ) {
                 map.controller.animateTo(point)
             }
@@ -2337,7 +2422,9 @@ private fun styleTrackingControls(isTracking: Boolean) {
         routeLine.addPoint(point)
         routeCoordinates.add(point)
 
-        map.controller.animateTo(point)
+        if (mapFollowEnabled) {
+            map.controller.animateTo(point)
+        }
         map.invalidate()
 
         val previous = lastLocation
