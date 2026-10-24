@@ -501,6 +501,9 @@ class MainActivity : Activity(), LocationListener {
 
         createDashboard()
         updateStatistics()
+
+        // Minta lokasi untuk header tanpa memulai rekaman perjalanan.
+        requestDashboardLocation()
     }
 
 
@@ -2466,6 +2469,62 @@ private fun styleTrackingControls(isTracking: Boolean) {
     }
 
 
+    private fun requestDashboardLocation() {
+        if (!::locationHeaderText.isInitialized) return
+
+        if (!hasLocationPermission()) {
+            locationHeaderText.text = "Meminta izin lokasi..."
+            requestPermissions(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                ),
+                permissionCode
+            )
+            return
+        }
+
+        try {
+            val provider = when {
+                locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ->
+                    LocationManager.GPS_PROVIDER
+                locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) ->
+                    LocationManager.NETWORK_PROVIDER
+                else -> null
+            }
+
+            if (provider == null) {
+                locationHeaderText.text = "Aktifkan lokasi/GPS"
+                return
+            }
+
+            locationHeaderText.text = "Mencari lokasi..."
+
+            val lastKnown = try {
+                locationManager.getLastKnownLocation(provider)
+            } catch (_: SecurityException) {
+                null
+            }
+
+            if (lastKnown != null) {
+                updateLocationHeader(lastKnown)
+            }
+
+            locationManager.requestLocationUpdates(
+                provider,
+                5000L,
+                0f,
+                this,
+                Looper.getMainLooper()
+            )
+        } catch (_: SecurityException) {
+            locationHeaderText.text = "Izin lokasi belum tersedia"
+        } catch (_: Exception) {
+            locationHeaderText.text = "Lokasi belum tersedia"
+        }
+    }
+
+
     private fun updateLocationHeader(location: Location) {
         val coordinateLabel = String.format(
             Locale.US,
@@ -2972,6 +3031,27 @@ val now = System.currentTimeMillis()
             .show()
     }
 
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+
+        if (requestCode != permissionCode) return
+
+        if (hasLocationPermission()) {
+            requestDashboardLocation()
+        } else if (::locationHeaderText.isInitialized) {
+            locationHeaderText.text = "Izin lokasi diperlukan untuk mendeteksi tempat"
+            Toast.makeText(
+                this,
+                "Izinkan akses lokasi agar nama tempat dapat ditampilkan.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
     override fun onProviderEnabled(provider: String) {
         if (provider != LocationManager.GPS_PROVIDER) return
 
@@ -3035,7 +3115,7 @@ val now = System.currentTimeMillis()
         weatherHandler.removeCallbacksAndMessages(null)
         weatherExecutor.shutdownNow()
 
-        if (tracking && hasLocationPermission()) {
+        if (hasLocationPermission()) {
             try {
                 locationManager.removeUpdates(this)
             } catch (_: SecurityException) {
