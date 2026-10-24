@@ -2467,77 +2467,131 @@ private fun styleTrackingControls(isTracking: Boolean) {
 
 
     private fun updateLocationHeader(location: Location) {
+        val coordinateLabel = String.format(
+            Locale.US,
+            "Koordinat GPS: %.5f, %.5f",
+            location.latitude,
+            location.longitude
+        )
+
+        // Tampilkan koordinat terlebih dahulu sebagai informasi cadangan.
+        if (::locationHeaderText.isInitialized) {
+            if (lastLocationHeaderLabel.isBlank() ||
+                lastLocationHeaderLabel.startsWith("Koordinat GPS:")
+            ) {
+                lastLocationHeaderLabel = coordinateLabel
+                locationHeaderText.text = coordinateLabel
+            }
+        }
+
+        // Koordinat yang terlalu tidak akurat tetap ditampilkan,
+        // tetapi tidak digunakan untuk mencari nama tempat.
+        if (location.hasAccuracy() && location.accuracy > 100f) {
+            return
+        }
+
         val previous = lastGeocodedLocation
         val now = System.currentTimeMillis()
 
+        // Batasi permintaan internet agar tidak terlalu sering.
         if (previous != null &&
             previous.distanceTo(location) < 250f &&
             now - lastGeocodeAttemptMs < 60_000L
-        ) return
+        ) {
+            return
+        }
 
         lastGeocodeAttemptMs = now
         lastGeocodedLocation = Location(location)
 
         locationHeaderExecutor.execute {
+            var connection: HttpURLConnection? = null
+
             try {
-                val geocoder = Geocoder(this, Locale("id", "ID"))
-                val addresses = geocoder.getFromLocation(
-                    location.latitude,
-                    location.longitude,
-                    1
+                val url = URL(
+                    "https://photon.komoot.io/reverse" +
+                        "?lat=${location.latitude}" +
+                        "&lon=${location.longitude}" +
+                        "&lang=en"
                 )
-                val address = addresses?.firstOrNull() ?: return@execute
 
-                val jalan = address.thoroughfare?.trim().orEmpty()
-                val kelurahan = address.subLocality?.trim().orEmpty()
-                val kecamatan = address.locality?.trim().orEmpty()
-                val kotaKabupaten = address.subAdminArea?.trim().orEmpty()
-
-                val wilayah = listOf(kelurahan, kecamatan, kotaKabupaten)
-                    .filter { it.isNotBlank() }
-                    .distinct()
-
-                val bagianLokasi = mutableListOf<String>()
-
-                if (jalan.isNotBlank()) {
-                    bagianLokasi.add(jalan)
+                connection = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 8000
+                    readTimeout = 8000
+                    setRequestProperty("User-Agent", "SepedaPro-Android/1.0")
+                    setRequestProperty("Accept", "application/json")
                 }
 
-                for (bagian in wilayah) {
-                    if (bagianLokasi.none { it.equals(bagian, ignoreCase = true) }) {
-                        bagianLokasi.add(bagian)
-                    }
-                }
-
-                if (bagianLokasi.isEmpty()) {
-                    runOnUiThread {
-                        if (lastLocationHeaderLabel.isBlank()) {
-                            locationHeaderText.text = "Lokasi GPS terdeteksi"
-                        }
-                    }
+                if (connection.responseCode != HttpURLConnection.HTTP_OK) {
                     return@execute
                 }
 
-                val label = bagianLokasi.take(3).joinToString(", ")
+                val body = connection.inputStream.bufferedReader().use {
+                    it.readText()
+                }
 
-                if (label != lastLocationHeaderLabel) {
-                    runOnUiThread {
-                        lastLocationHeaderLabel = label
-                        locationHeaderText.text = label
+                val features = JSONObject(body).optJSONArray("features")
+                    ?: JSONArray()
+
+                val feature = features.optJSONObject(0) ?: return@execute
+                val properties = feature.optJSONObject("properties")
+                    ?: JSONObject()
+
+                val candidates = listOf(
+                    properties.optString("street").trim(),
+                    properties.optString("locality").trim(),
+                    properties.optString("district").trim(),
+                    properties.optString("city").trim(),
+                    properties.optString("county").trim(),
+                    properties.optString("state").trim()
+                ).filter {
+                    it.isNotBlank() && !it.equals("null", ignoreCase = true)
+                }
+
+                val parts = mutableListOf<String>()
+                for (candidate in candidates) {
+                    if (parts.none {
+                        it.equals(candidate, ignoreCase = true)
+                    }) {
+                        parts.add(candidate)
                     }
+                }
+
+                // Jika alamat tidak tersedia, koordinat tetap ditampilkan.
+                if (parts.isEmpty()) {
+                    return@execute
+                }
+
+                val label = parts.take(4).joinToString(", ")
+
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+
+                    // Jangan biarkan hasil permintaan lama menimpa
+                    // lokasi yang sudah berpindah cukup jauh.
+                    val latest = lastGeocodedLocation
+                    if (latest != null &&
+                        latest.distanceTo(location) > 250f
+                    ) {
+                        return@runOnUiThread
+                    }
+
+                    lastLocationHeaderLabel = label
+                    locationHeaderText.text = label
                 }
             } catch (_: Exception) {
-                // Pertahankan nama lokasi terakhir jika pencarian gagal.
-                runOnUiThread {
-                    if (lastLocationHeaderLabel.isBlank()) {
-                        locationHeaderText.text = "Lokasi GPS terdeteksi"
-                    }
-                }
+                // Jika internet atau layanan lokasi gagal,
+                // pertahankan koordinat GPS sebagai cadangan.
+            } finally {
+                connection?.disconnect()
             }
         }
     }
 
     override fun onLocationChanged(location: Location) {
+        updateLocationHeader(location)
+
         if (location.accuracy > 30f) {
             if (tracking && !manuallyPaused) {
                 statusText.text = "MENUNGGU GPS LEBIH AKURAT"
@@ -2545,8 +2599,6 @@ private fun styleTrackingControls(isTracking: Boolean) {
             }
             return
         }
-
-        updateLocationHeader(location)
 
         val point = GeoPoint(
             location.latitude,
