@@ -1499,9 +1499,9 @@ private fun styleTrackingControls(isTracking: Boolean) {
 
         mapFrame.addView(mapSpeedContainer, overlayParams)
 
-        // Kontrol peta: zoom in, zoom out, dan lokasi GPS manual.
+        // Kontrol peta tersusun vertikal di sisi kanan.
         val mapControls = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
         }
 
@@ -1806,12 +1806,13 @@ private fun styleTrackingControls(isTracking: Boolean) {
         val controlSize = dp(48)
         val controlGap = dp(6)
 
+        // Urutan dari atas ke bawah; tombol terakhir berada paling bawah.
         for (button in listOf(
-            zoomInButton,
-            zoomOutButton,
-            manualLocationButton,
+            navigationButton,
             searchLocationButton,
-            navigationButton
+            manualLocationButton,
+            zoomOutButton,
+            zoomInButton
         )) {
             mapControls.addView(
                 button,
@@ -1819,7 +1820,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
                     controlSize,
                     controlSize
                 ).apply {
-                    marginEnd = controlGap
+                    bottomMargin = controlGap
                 }
             )
         }
@@ -1845,14 +1846,11 @@ private fun styleTrackingControls(isTracking: Boolean) {
             visibility = View.GONE
         }
 
-        mapFrame.addView(
+        // Tombol kembali ke posisi sepeda berada paling bawah di kolom kanan.
+        mapControls.addView(
             recenterMapButton,
-            FrameLayout.LayoutParams(
-                dp(52),
-                dp(52),
-                Gravity.BOTTOM or Gravity.START
-            ).apply {
-                setMargins(dp(12), dp(8), dp(8), dp(16))
+            LinearLayout.LayoutParams(dp(52), dp(52)).apply {
+                topMargin = controlGap
             }
         )
 
