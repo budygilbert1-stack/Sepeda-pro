@@ -66,6 +66,8 @@ class MainActivity : Activity(), LocationListener {
     private var lastLocationHeaderLabel = ""
     private lateinit var routeLine: Polyline
     private lateinit var bikeMarker: Marker
+    private lateinit var navigationLine: Polyline
+    private var latestGpsPoint: GeoPoint? = null
 
 
     private fun searchLocationsOnline(query: String): List<android.location.Address> {
@@ -163,6 +165,124 @@ class MainActivity : Activity(), LocationListener {
             ).show()
         }
         map.invalidate()
+    }
+
+    private fun startNavigationToSelectedLocation() {
+        val start = latestGpsPoint
+        val destination = selectedLocationPoint
+
+        if (start == null) {
+            Toast.makeText(
+                this,
+                "Posisi GPS belum tersedia. Aktifkan GPS dan tunggu lokasi terbaca.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        if (destination == null) {
+            Toast.makeText(
+                this,
+                "Cari atau pilih lokasi tujuan terlebih dahulu.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        Toast.makeText(this, "Menghitung rute jalan...", Toast.LENGTH_SHORT).show()
+
+        locationHeaderExecutor.execute {
+            var connection: HttpURLConnection? = null
+
+            try {
+                val url = URL(
+                    "https://router.project-osrm.org/route/v1/driving/" +
+                    "${start.longitude},${start.latitude};" +
+                    "${destination.longitude},${destination.latitude}" +
+                    "?overview=full&geometries=geojson"
+                )
+
+                connection = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 15000
+                    readTimeout = 20000
+                    setRequestProperty("User-Agent", "SepedaPro-Android")
+                }
+
+                if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+                    throw IllegalStateException("Layanan rute tidak merespons.")
+                }
+
+                val body = connection.inputStream.bufferedReader().use {
+                    it.readText()
+                }
+
+                val response = JSONObject(body)
+
+                if (response.optString("code") != "Ok") {
+                    throw IllegalStateException("Rute jalan tidak ditemukan.")
+                }
+
+                val routes = response.getJSONArray("routes")
+                if (routes.length() == 0) {
+                    throw IllegalStateException("Rute jalan tidak ditemukan.")
+                }
+
+                val route = routes.getJSONObject(0)
+                val coordinates = route
+                    .getJSONObject("geometry")
+                    .getJSONArray("coordinates")
+
+                val points = ArrayList<GeoPoint>()
+
+                for (i in 0 until coordinates.length()) {
+                    val coordinate = coordinates.getJSONArray(i)
+                    points.add(
+                        GeoPoint(
+                            coordinate.getDouble(1),
+                            coordinate.getDouble(0)
+                        )
+                    )
+                }
+
+                val distanceMeters = route.optDouble("distance", 0.0)
+
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+
+                    navigationLine.setPoints(points)
+                    map.invalidate()
+
+                    val distanceText = if (distanceMeters >= 1000) {
+                        String.format(
+                            Locale("id", "ID"),
+                            "%.2f km",
+                            distanceMeters / 1000.0
+                        )
+                    } else {
+                        "${distanceMeters.toInt()} m"
+                    }
+
+                    Toast.makeText(
+                        this,
+                        "Rute ditemukan: $distanceText. Garis oranye menunjukkan rute jalan.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+
+                    Toast.makeText(
+                        this,
+                        "Gagal menghitung rute. Periksa internet atau coba lagi.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            } finally {
+                connection?.disconnect()
+            }
+        }
     }
 
     private fun selectMapLocation(point: GeoPoint, title: String = "Lokasi pilihan") {
@@ -555,6 +675,12 @@ private fun styleTrackingControls(isTracking: Boolean) {
         routeLine.outlinePaint.color = Color.rgb(30, 130, 255)
         routeLine.outlinePaint.strokeWidth = dp(5).toFloat()
         map.overlays.add(routeLine)
+
+        // Garis navigasi terpisah dari rekaman perjalanan GPS.
+        navigationLine = Polyline()
+        navigationLine.outlinePaint.color = Color.rgb(255, 145, 0)
+        navigationLine.outlinePaint.strokeWidth = dp(6).toFloat()
+        map.overlays.add(navigationLine)
 
         bikeMarker = Marker(map)
         bikeMarker.title = "Posisi Sepeda"
@@ -1669,6 +1795,13 @@ private fun styleTrackingControls(isTracking: Boolean) {
             searchInput.requestFocus()
         }
 
+        val navigationButton = createMapControlButton(
+            "🧭",
+            "Buat rute dari GPS ke lokasi tujuan"
+        ) {
+            startNavigationToSelectedLocation()
+        }
+
         val controlSize = dp(48)
         val controlGap = dp(6)
 
@@ -1676,7 +1809,8 @@ private fun styleTrackingControls(isTracking: Boolean) {
             zoomInButton,
             zoomOutButton,
             manualLocationButton,
-            searchLocationButton
+            searchLocationButton,
+            navigationButton
         )) {
             mapControls.addView(
                 button,
@@ -2397,6 +2531,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
             location.longitude
         )
 
+        latestGpsPoint = point
         bikeMarker.position = point
         if (!hasAutoZoomedToGps) {
             if (!userHasChosenMapLocation) {
