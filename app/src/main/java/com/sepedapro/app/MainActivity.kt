@@ -68,6 +68,7 @@ class MainActivity : Activity(), LocationListener {
     private lateinit var bikeMarker: Marker
     private lateinit var navigationLine: Polyline
     private var latestGpsPoint: GeoPoint? = null
+    private var smoothedMapBearing: Float? = null
 
 
     private fun searchLocationsOnline(query: String): List<android.location.Address> {
@@ -2335,6 +2336,8 @@ private fun styleTrackingControls(isTracking: Boolean) {
         lastLocation = null
 
         routeCoordinates.clear()
+        smoothedMapBearing = null
+        map.setMapOrientation(0f)
         routeLine.setPoints(ArrayList<GeoPoint>())
         map.invalidate()
 
@@ -2424,6 +2427,8 @@ private fun styleTrackingControls(isTracking: Boolean) {
         }
 
         tracking = false
+        smoothedMapBearing = null
+        map.setMapOrientation(0f)
         manuallyPaused = false
         automaticallyPaused = false
         pauseIndicator.clearAnimation()
@@ -2552,6 +2557,22 @@ private fun styleTrackingControls(isTracking: Boolean) {
                 map.controller.animateTo(point)
             }
             return
+        }
+
+        // Rotasi peta mengikuti arah GPS saat tracking dan ikuti peta aktif.
+        if (mapFollowEnabled && location.hasBearing() &&
+            location.hasSpeed() && location.speed >= 1.5f
+        ) {
+            val rawBearing = location.bearing
+            val previousBearing = smoothedMapBearing
+            val adjustedBearing = if (previousBearing == null) {
+                rawBearing
+            } else {
+                val delta = ((rawBearing - previousBearing + 540f) % 360f) - 180f
+                (previousBearing + delta * 0.25f + 360f) % 360f
+            }
+            smoothedMapBearing = adjustedBearing
+            map.setMapOrientation(-adjustedBearing)
         }
 
         routeLine.addPoint(point)
