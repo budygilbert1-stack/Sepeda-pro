@@ -2488,6 +2488,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
                 )
                 val address = addresses?.firstOrNull() ?: return@execute
 
+                val jalan = address.thoroughfare?.trim().orEmpty()
                 val kelurahan = address.subLocality?.trim().orEmpty()
                 val kecamatan = address.locality?.trim().orEmpty()
                 val kotaKabupaten = address.subAdminArea?.trim().orEmpty()
@@ -2496,15 +2497,28 @@ private fun styleTrackingControls(isTracking: Boolean) {
                     .filter { it.isNotBlank() }
                     .distinct()
 
-                if (wilayah.isEmpty()) return@execute
+                val bagianLokasi = mutableListOf<String>()
 
-                val label = when {
-                    wilayah.size >= 3 ->
-                        "${wilayah[0]}, ${wilayah[1]} – ${wilayah[2]}"
-                    wilayah.size == 2 ->
-                        "${wilayah[0]}, ${wilayah[1]}"
-                    else -> wilayah[0]
+                if (jalan.isNotBlank()) {
+                    bagianLokasi.add(jalan)
                 }
+
+                for (bagian in wilayah) {
+                    if (bagianLokasi.none { it.equals(bagian, ignoreCase = true) }) {
+                        bagianLokasi.add(bagian)
+                    }
+                }
+
+                if (bagianLokasi.isEmpty()) {
+                    runOnUiThread {
+                        if (lastLocationHeaderLabel.isBlank()) {
+                            locationHeaderText.text = "Lokasi GPS terdeteksi"
+                        }
+                    }
+                    return@execute
+                }
+
+                val label = bagianLokasi.take(3).joinToString(", ")
 
                 if (label != lastLocationHeaderLabel) {
                     runOnUiThread {
@@ -2513,7 +2527,12 @@ private fun styleTrackingControls(isTracking: Boolean) {
                     }
                 }
             } catch (_: Exception) {
-                // Lokasi terakhir tetap ditampilkan jika geocoder gagal.
+                // Pertahankan nama lokasi terakhir jika pencarian gagal.
+                runOnUiThread {
+                    if (lastLocationHeaderLabel.isBlank()) {
+                        locationHeaderText.text = "Lokasi GPS terdeteksi"
+                    }
+                }
             }
         }
     }
