@@ -266,7 +266,7 @@ class MainActivity : Activity(), LocationListener {
 
                     Toast.makeText(
                         this,
-                        "Rute ditemukan: $distanceText. Garis oranye menunjukkan rute jalan.",
+                        "Rute ditemukan: $distanceText. Garis biru tua menunjukkan rute jalan.",
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -286,14 +286,95 @@ class MainActivity : Activity(), LocationListener {
         }
     }
 
+
+    private fun createBikeTriangleIcon(): android.graphics.drawable.Drawable {
+        val size = dp(34)
+        return object : android.graphics.drawable.Drawable() {
+            private val paint = android.graphics.Paint(
+                android.graphics.Paint.ANTI_ALIAS_FLAG
+            )
+            private val triangle = android.graphics.Path().apply {
+                moveTo(size / 2f, size * 0.06f)
+                lineTo(size * 0.90f, size * 0.88f)
+                lineTo(size / 2f, size * 0.70f)
+                lineTo(size * 0.10f, size * 0.88f)
+                close()
+            }
+
+            override fun draw(canvas: android.graphics.Canvas) {
+                val save = canvas.save()
+                canvas.translate(bounds.left.toFloat(), bounds.top.toFloat())
+                canvas.rotate(
+                    bikeMarker.rotation,
+                    bounds.width() / 2f,
+                    bounds.height() / 2f
+                )
+
+                paint.style = android.graphics.Paint.Style.STROKE
+                paint.strokeWidth = dp(2).toFloat()
+                paint.color = Color.WHITE
+                canvas.drawPath(triangle, paint)
+
+                paint.style = android.graphics.Paint.Style.FILL
+                paint.color = Color.rgb(30, 100, 255)
+                canvas.drawPath(triangle, paint)
+                canvas.restoreToCount(save)
+            }
+
+            override fun setAlpha(alpha: Int) {
+                paint.alpha = alpha
+            }
+
+            override fun setColorFilter(
+                colorFilter: android.graphics.ColorFilter?
+            ) {
+                paint.colorFilter = colorFilter
+            }
+
+            @Deprecated("Deprecated in Android")
+            override fun getOpacity(): Int =
+                android.graphics.PixelFormat.TRANSLUCENT
+
+            override fun getIntrinsicWidth(): Int = size
+            override fun getIntrinsicHeight(): Int = size
+        }
+    }
+
+    private fun updateBikeMarkerDirection() {
+        val start = latestGpsPoint ?: return
+        val destination = selectedLocationPoint ?: return
+
+        val result = FloatArray(3)
+        Location.distanceBetween(
+            start.latitude,
+            start.longitude,
+            destination.latitude,
+            destination.longitude,
+            result
+        )
+
+        if (result[0] < 2f) return
+
+        bikeMarker.rotation = result[1]
+        bikeMarker.icon?.invalidateSelf()
+        map.invalidate()
+    }
+
     private fun selectMapLocation(point: GeoPoint, title: String = "Lokasi pilihan") {
         userHasChosenMapLocation = true
         hasAutoZoomedToGps = true
         selectedLocationPoint = point
+        updateBikeMarkerDirection()
         pauseMapFollowingForManualControl()
 
         val marker = selectedLocationMarker ?: Marker(map).also {
             it.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+            it.icon = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(Color.RED)
+                setStroke(dp(2), Color.WHITE)
+                setSize(dp(22), dp(22))
+            }
             map.overlays.add(it)
             selectedLocationMarker = it
         }
@@ -682,12 +763,14 @@ private fun styleTrackingControls(isTracking: Boolean) {
 
         // Garis navigasi terpisah dari rekaman perjalanan GPS.
         navigationLine = Polyline()
-        navigationLine.outlinePaint.color = Color.rgb(255, 145, 0)
+        navigationLine.outlinePaint.color = Color.rgb(13, 71, 161)
         navigationLine.outlinePaint.strokeWidth = dp(6).toFloat()
         map.overlays.add(navigationLine)
 
         bikeMarker = Marker(map)
         bikeMarker.title = "Posisi Sepeda"
+        bikeMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+        bikeMarker.icon = createBikeTriangleIcon()
         map.overlays.add(bikeMarker)
 
         val mapEventsReceiver = object : org.osmdroid.events.MapEventsReceiver {
@@ -2666,6 +2749,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
 
         latestGpsPoint = point
         bikeMarker.position = point
+        updateBikeMarkerDirection()
         if (!hasAutoZoomedToGps) {
             if (!userHasChosenMapLocation) {
                 map.controller.setZoom(18.0)
