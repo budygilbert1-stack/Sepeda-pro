@@ -14,6 +14,19 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.media.AudioManager
 import android.media.ToneGenerator
+import android.content.ContentValues
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
+import android.net.Uri
+import android.os.Environment
+import android.provider.MediaStore
+import androidx.core.content.FileProvider
+import java.io.File
+import java.io.FileOutputStream
 import android.content.SharedPreferences
 import android.widget.EditText
 import android.widget.AutoCompleteTextView
@@ -452,6 +465,12 @@ class MainActivity : Activity(), LocationListener {
     private var totalElevationGainMeters = 0.0
     private var lastElevationBaselineMeters: Double? = null
     private val elevationSamples = ArrayDeque<Double>()
+    private data class ElevationProfilePoint(
+        val distanceMeters: Double,
+        val altitudeMeters: Double
+    )
+    private val elevationProfile = ArrayList<ElevationProfilePoint>()
+    private var lastElevationProfileDistanceMeters = -10.0
 
     private data class GradientSample(
         val distanceMeters: Double,
@@ -2206,6 +2225,8 @@ private fun styleTrackingControls(isTracking: Boolean) {
         totalElevationGainMeters = 0.0
         lastElevationBaselineMeters = null
         elevationSamples.clear()
+        elevationProfile.clear()
+        lastElevationProfileDistanceMeters = -10.0
 
         if (::altitudeText.isInitialized) {
             altitudeText.text = "-- mdpl"
@@ -2236,6 +2257,20 @@ private fun styleTrackingControls(isTracking: Boolean) {
         val filteredAltitude = sorted[sorted.size / 2]
 
         currentAltitudeMeters = filteredAltitude
+
+        if (
+            lastElevationProfileDistanceMeters < 0.0 ||
+            totalDistance - lastElevationProfileDistanceMeters >= 10.0
+        ) {
+            elevationProfile.add(
+                ElevationProfilePoint(totalDistance, filteredAltitude)
+            )
+            lastElevationProfileDistanceMeters = totalDistance
+            if (elevationProfile.size > 3000) {
+                elevationProfile.removeAt(0)
+            }
+        }
+
         altitudeText.text = String.format(
             Locale.US,
             "%.0f mdpl",
@@ -2990,6 +3025,16 @@ val now = System.currentTimeMillis()
             trip.put("moving", totalMovingTime)
             trip.put("stopped", (totalElapsedTime - totalMovingTime).coerceAtLeast(0L))
             trip.put("maxSpeed", maxSpeedKmh)
+            trip.put("elevationGain", totalElevationGainMeters)
+
+            val profile = JSONArray()
+            for (sample in elevationProfile) {
+                val point = JSONObject()
+                point.put("distance", sample.distanceMeters)
+                point.put("altitude", sample.altitudeMeters)
+                profile.put(point)
+            }
+            trip.put("elevationProfile", profile)
 
             val average = if (totalMovingTime > 0L) {
                 totalDistance / totalMovingTime * 3.6
@@ -3029,6 +3074,404 @@ val now = System.currentTimeMillis()
                 Toast.LENGTH_LONG
             ).show()
         }
+    }
+
+    private fun shareRideReport(trip: JSONObject) {
+        Toast.makeText(
+            this,
+            "Sedang membuat laporan perjalanan...",
+            Toast.LENGTH_SHORT
+        ).show()
+
+        Thread {
+            try {
+                val bitmap = createRideReportBitmap(trip)
+                val uri = saveRideReportBitmap(bitmap)
+                bitmap.recycle()
+
+                runOnUiThread {
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "image/png"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    startActivity(
+                        Intent.createChooser(intent, "Bagikan Laporan Sepedahan")
+                    )
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(
+                        this,
+                        "Gagal membuat laporan: ${e.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun saveRideReportBitmap(bitmap: Bitmap): Uri {
+        val filename = "Sapedahan_${System.currentTimeMillis()}.png"
+
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(
+                    MediaStore.Images.Media.RELATIVE_PATH,
+                    Environment.DIRECTORY_PICTURES + "/Sapedahan"
+                )
+            }
+
+            val uri = contentResolver.insert(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                values
+            ) ?: throw IllegalStateException("Tidak dapat membuat file laporan")
+
+            try {
+                contentResolver.openOutputStream(uri)?.use { output ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+                } ?: throw IllegalStateException("Tidak dapat menyimpan PNG")
+            } catch (e: Exception) {
+                contentResolver.delete(uri, null, null)
+                throw e
+            }
+            return uri
+        }
+
+        val directory = File(
+            getExternalFilesDir(Environment.DIRECTORY_PICTURES),
+            "Sapedahan"
+        )
+        if (!directory.exists() && !directory.mkdirs()) {
+            throw IllegalStateException("Folder laporan gagal dibuat")
+        }
+
+        val file = File(directory, filename)
+        FileOutputStream(file).use {
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+        }
+
+        return FileProvider.getUriForFile(
+            this,
+            "$packageName.fileprovider",
+            file
+        )
+    }
+
+    private fun createRideReportBitmap(trip: JSONObject): Bitmap {
+        val width = 1080
+        val height = 1920
+        val bitmap = Bitmap.createBitmap(
+            width,
+            height,
+            Bitmap.Config.ARGB_8888
+        )
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.TRANSPARENT)
+
+        fun makePaint(
+            color: Int,
+            size: Float = 32f,
+            bold: Boolean = false
+        ): Paint {
+            return Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                this.color = color
+                textSize = size
+                typeface = if (bold) {
+                    Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                } else {
+                    Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                }
+            }
+        }
+
+        val white = Color.WHITE
+        val blue = Color.rgb(35, 145, 255)
+        val dark = Color.argb(225, 13, 24, 38)
+        val muted = Color.rgb(175, 190, 207)
+
+        fun panel(left: Float, top: Float, right: Float, bottom: Float) {
+            canvas.drawRoundRect(
+                RectF(left, top, right, bottom),
+                 30f,
+                30f,
+                makePaint(dark)
+            )
+        }
+
+
+        fun label(text: String, x: Float, y: Float, size: Float = 25f) {
+            canvas.drawText(text, x, y, makePaint(muted, size, true))
+        }
+
+        fun value(text: String, x: Float, y: Float, size: Float = 57f) {
+            canvas.drawText(text, x, y, makePaint(white, size, true))
+        }
+
+        // Judul laporan
+        canvas.drawText(
+            "RIDE REPORT",
+            75f,
+            90f,
+            makePaint(white, 35f, true)
+        )
+        canvas.drawText(
+            "YOUR CYCLING JOURNEY",
+            75f,
+            130f,
+            makePaint(muted, 21f)
+        )
+
+        // Panel peta
+        val mapRect = RectF(55f, 175f, 1025f, 930f)
+        canvas.drawRoundRect(
+            mapRect,
+             30f,
+            30f,
+            makePaint(Color.rgb(224, 234, 226))
+        )
+
+        // Pola jalan dekoratif sebagai dasar peta.
+        val roadPaint = makePaint(Color.rgb(184, 199, 188), 1f)
+        roadPaint.style = Paint.Style.STROKE
+        roadPaint.strokeWidth = 13f
+        roadPaint.strokeCap = Paint.Cap.ROUND
+
+        for (i in 0..5) {
+            val road = Path().apply {
+                moveTo(70f, 260f + i * 125f)
+                cubicTo(
+                    320f, 190f + i * 125f,
+                    650f, 350f + i * 90f,
+                    1010f, 240f + i * 115f
+                )
+            }
+            canvas.drawPath(road, roadPaint)
+        }
+
+        roadPaint.color = Color.rgb(204, 215, 204)
+        roadPaint.strokeWidth = 7f
+
+        for (i in 0..5) {
+            val road = Path().apply {
+                moveTo(150f + i * 155f, 190f)
+                cubicTo(
+                    80f + i * 160f, 430f,
+                    260f + i * 130f, 680f,
+                    180f + i * 155f, 910f
+                )
+            }
+            canvas.drawPath(road, roadPaint)
+        }
+
+        // Rute perjalanan dari koordinat GPS yang tersimpan.
+        val route = trip.optJSONArray("route") ?: JSONArray()
+        val points = ArrayList<Pair<Double, Double>>()
+
+        for (i in 0 until route.length()) {
+            val point = route.optJSONObject(i) ?: continue
+            val lat = point.optDouble("lat", Double.NaN)
+            val lon = point.optDouble("lon", Double.NaN)
+
+            if (lat.isFinite() && lon.isFinite()) {
+                points.add(Pair(lat, lon))
+            }
+        }
+
+        if (points.isNotEmpty()) {
+            val minLat = points.minOf { it.first }
+            val maxLat = points.maxOf { it.first }
+            val minLon = points.minOf { it.second }
+            val maxLon = points.maxOf { it.second }
+
+            val latSpan = (maxLat - minLat).coerceAtLeast(0.00001)
+            val lonSpan = (maxLon - minLon).coerceAtLeast(0.00001)
+            val scale = minOf(
+                820.0 / lonSpan,
+                600.0 / latSpan
+            )
+            val centerX = 540.0
+            val centerY = 550.0
+
+            val routePath = Path()
+
+            points.forEachIndexed { index, point ->
+                val x = (
+                    centerX + (point.second - (minLon + maxLon) / 2.0) * scale
+                ).toFloat()
+                val y = (
+                    centerY - (point.first - (minLat + maxLat) / 2.0) * scale
+                ).toFloat()
+
+                if (index == 0) {
+                    routePath.moveTo(x, y)
+                } else {
+                    routePath.lineTo(x, y)
+                }
+            }
+
+            val outline = makePaint(Color.WHITE)
+            outline.style = Paint.Style.STROKE
+            outline.strokeWidth = 25f
+            outline.strokeCap = Paint.Cap.ROUND
+            outline.strokeJoin = Paint.Join.ROUND
+            canvas.drawPath(routePath, outline)
+
+            val routePaint = makePaint(blue)
+            routePaint.style = Paint.Style.STROKE
+            routePaint.strokeWidth = 15f
+            routePaint.strokeCap = Paint.Cap.ROUND
+            routePaint.strokeJoin = Paint.Join.ROUND
+            canvas.drawPath(routePath, routePaint)
+
+            val first = points.first()
+            val last = points.last()
+
+            fun pointX(point: Pair<Double, Double>): Float {
+                return (
+                    centerX + (point.second - (minLon + maxLon) / 2.0) * scale
+                ).toFloat()
+            }
+
+            fun pointY(point: Pair<Double, Double>): Float {
+                return (
+                    centerY - (point.first - (minLat + maxLat) / 2.0) * scale
+                ).toFloat()
+            }
+
+            canvas.drawCircle(
+                pointX(first), pointY(first), 19f,
+                makePaint(Color.rgb(35, 190, 110))
+            )
+            canvas.drawCircle(
+                pointX(last), pointY(last), 19f,
+                makePaint(Color.rgb(240, 75, 75))
+            )
+        } else {
+            canvas.drawText(
+                "Rute tidak tersedia",
+                340f,
+                560f,
+                makePaint(Color.DKGRAY, 35f, true)
+            )
+        }
+
+        // Kartu statistik
+        panel(55f, 975f, 520f, 1215f)
+        panel(560f, 975f, 1025f, 1215f)
+        panel(55f, 1240f, 1025f, 1460f)
+
+        val distanceKm = trip.optDouble("distance", 0.0) / 1000.0
+        val elevation = trip.optDouble("elevationGain", 0.0)
+        val average = trip.optDouble("average", 0.0)
+
+        label("JARAK", 95f, 1045f)
+        value(
+            String.format(Locale.US, "%.2f", distanceKm),
+            95f,
+            1125f,
+            65f
+        )
+        label("KILOMETER", 95f, 1175f, 21f)
+
+        label("ELEVATION GAIN", 600f, 1045f)
+        value(
+            String.format(Locale.US, "%.0f", elevation),
+            600f,
+            1125f,
+            65f
+        )
+        label("METER", 600f, 1175f, 21f)
+
+        label("KECEPATAN RATA-RATA", 95f, 1310f)
+        value(
+            String.format(Locale.US, "%.1f km/j", average),
+            95f,
+            1400f,
+            67f
+        )
+
+        // Grafik profil elevasi
+        panel(55f, 1485f, 1025f, 1780f)
+        label("PROFIL ELEVASI", 95f, 1550f, 27f)
+
+        val profile = trip.optJSONArray("elevationProfile") ?: JSONArray()
+        val elevations = ArrayList<Pair<Double, Double>>()
+
+        for (i in 0 until profile.length()) {
+            val point = profile.optJSONObject(i) ?: continue
+            val distance = point.optDouble("distance", Double.NaN)
+            val altitude = point.optDouble("altitude", Double.NaN)
+
+            if (distance.isFinite() && altitude.isFinite()) {
+                elevations.add(Pair(distance, altitude))
+            }
+        }
+
+        val chartLeft = 100f
+        val chartRight = 980f
+        val chartTop = 1600f
+        val chartBottom = 1715f
+        val chartPath = Path()
+
+        if (elevations.size >= 2) {
+            val minAlt = elevations.minOf { it.second }
+            val maxAlt = elevations.maxOf { it.second }
+            val minDist = elevations.minOf { it.first }
+            val maxDist = elevations.maxOf { it.first }
+            val altSpan = (maxAlt - minAlt).coerceAtLeast(1.0)
+            val distSpan = (maxDist - minDist).coerceAtLeast(1.0)
+
+            elevations.forEachIndexed { index, point ->
+                val x = chartLeft +
+                    ((point.first - minDist) / distSpan).toFloat() *
+                    (chartRight - chartLeft)
+                val y = chartBottom -
+                    ((point.second - minAlt) / altSpan).toFloat() *
+                    (chartBottom - chartTop)
+
+                if (index == 0) chartPath.moveTo(x, y)
+                else chartPath.lineTo(x, y)
+            }
+        } else {
+            chartPath.moveTo(chartLeft, 1660f)
+            chartPath.lineTo(chartRight, 1660f)
+            canvas.drawText(
+                "Data elevasi belum tersedia",
+                350f,
+                1740f,
+                makePaint(muted, 22f)
+            )
+        }
+
+        val chartPaint = makePaint(blue)
+        chartPaint.style = Paint.Style.STROKE
+        chartPaint.strokeWidth = 9f
+        chartPaint.strokeCap = Paint.Cap.ROUND
+        chartPaint.strokeJoin = Paint.Join.ROUND
+        canvas.drawPath(chartPath, chartPaint)
+
+        // Branding
+        canvas.drawText(
+            "SEPEDAHAN",
+            540f,
+            1870f,
+            makePaint(white, 66f, true).apply {
+                textAlign = Paint.Align.CENTER
+            }
+        )
+        canvas.drawText(
+            "RIDE YOUR OWN STORY",
+            540f,
+            1910f,
+            makePaint(muted, 20f).apply {
+                textAlign = Paint.Align.CENTER
+            }
+        )
+
+        return bitmap
     }
 
     private fun showTripHistory() {
@@ -3112,6 +3555,9 @@ val now = System.currentTimeMillis()
             .setTitle("Detail Perjalanan")
             .setMessage(message)
             .setPositiveButton("Tutup", null)
+            .setNeutralButton("Bagikan Laporan") { _, _ ->
+                shareRideReport(trip)
+            }
             .show()
     }
 

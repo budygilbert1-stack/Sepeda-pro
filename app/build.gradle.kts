@@ -27,4 +27,5 @@ android {
 
 dependencies {
     implementation("org.osmdroid:osmdroid-android:6.1.20")
+    implementation("androidx.core:core:1.15.0")
 }
