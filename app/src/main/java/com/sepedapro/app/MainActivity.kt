@@ -3163,14 +3163,15 @@ val now = System.currentTimeMillis()
     private fun createRideReportBitmap(trip: JSONObject): Bitmap {
         val width = 1080
         val height = 1920
+
         val bitmap = Bitmap.createBitmap(
             width,
             height,
             Bitmap.Config.ARGB_8888
         )
         val canvas = Canvas(bitmap)
-        canvas.drawColor(Color.TRANSPARENT)
 
+        // Kanvas dibiarkan transparan sepenuhnya.
         fun makePaint(
             color: Int,
             size: Float = 32f,
@@ -3179,94 +3180,80 @@ val now = System.currentTimeMillis()
             return Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 this.color = color
                 textSize = size
-                typeface = if (bold) {
-                    Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                } else {
-                    Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-                }
+                typeface = Typeface.create(
+                    "sans-serif-condensed",
+                    if (bold) Typeface.BOLD else Typeface.NORMAL
+                )
+                textAlign = Paint.Align.CENTER
+                setShadowLayer(9f, 2f, 4f, Color.argb(220, 0, 0, 0))
             }
         }
 
         val white = Color.WHITE
-        val blue = Color.rgb(35, 145, 255)
-        val dark = Color.argb(225, 13, 24, 38)
-        val muted = Color.rgb(175, 190, 207)
+        val orange = Color.rgb(255, 119, 0)
+        val black = Color.BLACK
 
-        fun panel(left: Float, top: Float, right: Float, bottom: Float) {
-            canvas.drawRoundRect(
-                RectF(left, top, right, bottom),
-                 30f,
-                30f,
-                makePaint(dark)
+        fun drawStat(label: String, value: String, labelY: Float, valueY: Float,
+                     labelSize: Float = 43f, valueSize: Float = 91f) {
+            canvas.drawText(
+                label,
+                540f,
+                labelY,
+                makePaint(white, labelSize, true)
+            )
+            canvas.drawText(
+                value,
+                540f,
+                valueY,
+                makePaint(white, valueSize, true)
             )
         }
 
+        // DATA PERJALANAN
+        val distanceKm = trip.optDouble("distance", 0.0) / 1000.0
+        val elevation = trip.optDouble("elevationGain", 0.0)
+        val average = trip.optDouble("average", 0.0)
 
-        fun label(text: String, x: Float, y: Float, size: Float = 25f) {
-            canvas.drawText(text, x, y, makePaint(muted, size, true))
-        }
-
-        fun value(text: String, x: Float, y: Float, size: Float = 57f) {
-            canvas.drawText(text, x, y, makePaint(white, size, true))
-        }
-
-        // Judul laporan
-        canvas.drawText(
-            "RIDE REPORT",
-            75f,
-            90f,
-            makePaint(white, 35f, true)
+        val distanceText = String.format(
+            java.util.Locale("id", "ID"),
+            "%.2f km",
+            distanceKm
         )
-        canvas.drawText(
-            "YOUR CYCLING JOURNEY",
-            75f,
-            130f,
-            makePaint(muted, 21f)
+        val elevationText = String.format(
+            java.util.Locale("id", "ID"),
+            "%.0f m",
+            elevation
+        )
+        val averageText = String.format(
+            java.util.Locale("id", "ID"),
+            "%.1f km/jam",
+            average
         )
 
-        // Panel peta
-        val mapRect = RectF(55f, 175f, 1025f, 930f)
-        canvas.drawRoundRect(
-            mapRect,
-             30f,
-            30f,
-            makePaint(Color.rgb(224, 234, 226))
+        val durationMinutes = (trip.optLong("duration", 0L) / 60000L)
+            .coerceAtLeast(0L)
+        val hours = durationMinutes / 60L
+        val minutes = durationMinutes % 60L
+        val durationText = if (hours > 0L) {
+            "${hours}j ${minutes}m"
+        } else {
+            "${minutes}m"
+        }
+
+        // STATISTIK PUTIH SEPERTI REFERENSI.
+        drawStat("Jarak", distanceText, 160f, 260f)
+        drawStat("Kenaikan Elev", elevationText, 390f, 490f)
+        drawStat(
+            "Kecepatan Rata-rata",
+            averageText,
+            620f,
+            720f,
+            39f,
+            83f
         )
+        drawStat("Waktu", durationText, 850f, 950f)
 
-        // Pola jalan dekoratif sebagai dasar peta.
-        val roadPaint = makePaint(Color.rgb(184, 199, 188), 1f)
-        roadPaint.style = Paint.Style.STROKE
-        roadPaint.strokeWidth = 13f
-        roadPaint.strokeCap = Paint.Cap.ROUND
-
-        for (i in 0..5) {
-            val road = Path().apply {
-                moveTo(70f, 260f + i * 125f)
-                cubicTo(
-                    320f, 190f + i * 125f,
-                    650f, 350f + i * 90f,
-                    1010f, 240f + i * 115f
-                )
-            }
-            canvas.drawPath(road, roadPaint)
-        }
-
-        roadPaint.color = Color.rgb(204, 215, 204)
-        roadPaint.strokeWidth = 7f
-
-        for (i in 0..5) {
-            val road = Path().apply {
-                moveTo(150f + i * 155f, 190f)
-                cubicTo(
-                    80f + i * 160f, 430f,
-                    260f + i * 130f, 680f,
-                    180f + i * 155f, 910f
-                )
-            }
-            canvas.drawPath(road, roadPaint)
-        }
-
-        // Rute perjalanan dari koordinat GPS yang tersimpan.
+        // RUTE GPS ASLI DENGAN WARNA ORANYE.
         val route = trip.optJSONArray("route") ?: JSONArray()
         val points = ArrayList<Pair<Double, Double>>()
 
@@ -3280,196 +3267,187 @@ val now = System.currentTimeMillis()
             }
         }
 
-        if (points.isNotEmpty()) {
+        if (points.size >= 2) {
             val minLat = points.minOf { it.first }
             val maxLat = points.maxOf { it.first }
             val minLon = points.minOf { it.second }
             val maxLon = points.maxOf { it.second }
 
-            val latSpan = (maxLat - minLat).coerceAtLeast(0.00001)
-            val lonSpan = (maxLon - minLon).coerceAtLeast(0.00001)
+            val centerLat = (minLat + maxLat) / 2.0
+            val longitudeFactor = kotlin.math.cos(
+                Math.toRadians(centerLat)
+            ).coerceAtLeast(0.01)
+
+            val xValues = points.map { it.second * longitudeFactor }
+            val yValues = points.map { it.first }
+
+            val minX = xValues.minOrNull() ?: 0.0
+            val maxX = xValues.maxOrNull() ?: 0.0
+            val minY = yValues.minOrNull() ?: 0.0
+            val maxY = yValues.maxOrNull() ?: 0.0
+
+            val spanX = (maxX - minX).coerceAtLeast(0.000001)
+            val spanY = (maxY - minY).coerceAtLeast(0.000001)
+
+            val routeWidth = 780f
+            val routeHeight = 390f
             val scale = minOf(
-                820.0 / lonSpan,
-                600.0 / latSpan
+                routeWidth.toDouble() / spanX,
+                routeHeight.toDouble() / spanY
             )
-            val centerX = 540.0
-            val centerY = 550.0
+
+            val centerX = 540f
+            val centerY = 1260f
 
             val routePath = Path()
 
             points.forEachIndexed { index, point ->
                 val x = (
-                    centerX + (point.second - (minLon + maxLon) / 2.0) * scale
-                ).toFloat()
-                val y = (
-                    centerY - (point.first - (minLat + maxLat) / 2.0) * scale
+                    centerX +
+                    (point.second * longitudeFactor -
+                        (minX + maxX) / 2.0) * scale
                 ).toFloat()
 
-                if (index == 0) {
-                    routePath.moveTo(x, y)
-                } else {
-                    routePath.lineTo(x, y)
-                }
+                val y = (
+                    centerY -
+                    (point.first - (minY + maxY) / 2.0) * scale
+                ).toFloat()
+
+                if (index == 0) routePath.moveTo(x, y)
+                else routePath.lineTo(x, y)
             }
 
-            val outline = makePaint(Color.WHITE)
-            outline.style = Paint.Style.STROKE
-            outline.strokeWidth = 25f
-            outline.strokeCap = Paint.Cap.ROUND
-            outline.strokeJoin = Paint.Join.ROUND
-            canvas.drawPath(routePath, outline)
+            val routeShadow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.argb(210, 0, 0, 0)
+                style = Paint.Style.STROKE
+                strokeWidth = 27f
+                strokeCap = Paint.Cap.ROUND
+                strokeJoin = Paint.Join.ROUND
+            }
+            canvas.drawPath(routePath, routeShadow)
 
-            val routePaint = makePaint(blue)
-            routePaint.style = Paint.Style.STROKE
-            routePaint.strokeWidth = 15f
-            routePaint.strokeCap = Paint.Cap.ROUND
-            routePaint.strokeJoin = Paint.Join.ROUND
+            val routePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = orange
+                style = Paint.Style.STROKE
+                strokeWidth = 17f
+                strokeCap = Paint.Cap.ROUND
+                strokeJoin = Paint.Join.ROUND
+                setShadowLayer(8f, 2f, 3f, black)
+            }
             canvas.drawPath(routePath, routePaint)
 
-            val first = points.first()
-            val last = points.last()
-
-            fun pointX(point: Pair<Double, Double>): Float {
-                return (
-                    centerX + (point.second - (minLon + maxLon) / 2.0) * scale
+            fun drawEndpoint(point: Pair<Double, Double>, color: Int) {
+                val x = (
+                    centerX +
+                    (point.second * longitudeFactor -
+                        (minX + maxX) / 2.0) * scale
                 ).toFloat()
+                val y = (
+                    centerY -
+                    (point.first - (minY + maxY) / 2.0) * scale
+                ).toFloat()
+
+                canvas.drawCircle(
+                    x, y, 25f,
+                    Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        this.color = white
+                        setShadowLayer(8f, 1f, 2f, black)
+                    }
+                )
+                canvas.drawCircle(
+                    x, y, 16f,
+                    Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        this.color = color
+                    }
+                )
             }
 
-            fun pointY(point: Pair<Double, Double>): Float {
-                return (
-                    centerY - (point.first - (minLat + maxLat) / 2.0) * scale
-                ).toFloat()
-            }
-
-            canvas.drawCircle(
-                pointX(first), pointY(first), 19f,
-                makePaint(Color.rgb(35, 190, 110))
-            )
-            canvas.drawCircle(
-                pointX(last), pointY(last), 19f,
-                makePaint(Color.rgb(240, 75, 75))
-            )
+            drawEndpoint(points.first(), Color.rgb(45, 210, 100))
+            drawEndpoint(points.last(), Color.rgb(245, 65, 65))
         } else {
             canvas.drawText(
-                "Rute tidak tersedia",
-                340f,
-                560f,
-                makePaint(Color.DKGRAY, 35f, true)
+                "Rute GPS tidak tersedia",
+                540f,
+                1260f,
+                makePaint(white, 36f, true)
             )
         }
 
-        // Kartu statistik
-        panel(55f, 975f, 520f, 1215f)
-        panel(560f, 975f, 1025f, 1215f)
-        panel(55f, 1240f, 1025f, 1460f)
-
-        val distanceKm = trip.optDouble("distance", 0.0) / 1000.0
-        val elevation = trip.optDouble("elevationGain", 0.0)
-        val average = trip.optDouble("average", 0.0)
-
-        label("JARAK", 95f, 1045f)
-        value(
-            String.format(Locale.US, "%.2f", distanceKm),
-            95f,
-            1125f,
-            65f
-        )
-        label("KILOMETER", 95f, 1175f, 21f)
-
-        label("ELEVATION GAIN", 600f, 1045f)
-        value(
-            String.format(Locale.US, "%.0f", elevation),
-            600f,
-            1125f,
-            65f
-        )
-        label("METER", 600f, 1175f, 21f)
-
-        label("KECEPATAN RATA-RATA", 95f, 1310f)
-        value(
-            String.format(Locale.US, "%.1f km/j", average),
-            95f,
-            1400f,
-            67f
-        )
-
-        // Grafik profil elevasi
-        panel(55f, 1485f, 1025f, 1780f)
-        label("PROFIL ELEVASI", 95f, 1550f, 27f)
-
-        val profile = trip.optJSONArray("elevationProfile") ?: JSONArray()
-        val elevations = ArrayList<Pair<Double, Double>>()
-
-        for (i in 0 until profile.length()) {
-            val point = profile.optJSONObject(i) ?: continue
-            val distance = point.optDouble("distance", Double.NaN)
-            val altitude = point.optDouble("altitude", Double.NaN)
-
-            if (distance.isFinite() && altitude.isFinite()) {
-                elevations.add(Pair(distance, altitude))
-            }
+        // IKON PESepeda DIGAMBAR LANGSUNG, TANPA BACKGROUND.
+        val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = white
+            style = Paint.Style.STROKE
+            strokeWidth = 15f
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            setShadowLayer(8f, 2f, 3f, black)
         }
 
-        val chartLeft = 100f
-        val chartRight = 980f
-        val chartTop = 1600f
-        val chartBottom = 1715f
-        val chartPath = Path()
+        val leftWheelX = 405f
+        val rightWheelX = 675f
+        val wheelY = 1615f
+        val wheelRadius = 49f
 
-        if (elevations.size >= 2) {
-            val minAlt = elevations.minOf { it.second }
-            val maxAlt = elevations.maxOf { it.second }
-            val minDist = elevations.minOf { it.first }
-            val maxDist = elevations.maxOf { it.first }
-            val altSpan = (maxAlt - minAlt).coerceAtLeast(1.0)
-            val distSpan = (maxDist - minDist).coerceAtLeast(1.0)
+        canvas.drawCircle(leftWheelX, wheelY, wheelRadius, iconPaint)
+        canvas.drawCircle(rightWheelX, wheelY, wheelRadius, iconPaint)
 
-            elevations.forEachIndexed { index, point ->
-                val x = chartLeft +
-                    ((point.first - minDist) / distSpan).toFloat() *
-                    (chartRight - chartLeft)
-                val y = chartBottom -
-                    ((point.second - minAlt) / altSpan).toFloat() *
-                    (chartBottom - chartTop)
+        fun bikeLine(x1: Float, y1: Float, x2: Float, y2: Float) {
+            canvas.drawLine(x1, y1, x2, y2, iconPaint)
+        }
 
-                if (index == 0) chartPath.moveTo(x, y)
-                else chartPath.lineTo(x, y)
+        bikeLine(leftWheelX, wheelY, 500f, 1535f)
+        bikeLine(500f, 1535f, 570f, wheelY)
+        bikeLine(leftWheelX, wheelY, 570f, wheelY)
+        bikeLine(570f, wheelY, rightWheelX, wheelY)
+        bikeLine(500f, 1535f, 535f, 1475f)
+        bikeLine(535f, 1475f, 585f, 1475f)
+        bikeLine(570f, wheelY, 610f, 1535f)
+        bikeLine(610f, 1535f, 675f, wheelY)
+
+        // Pengendara.
+        canvas.drawCircle(
+            555f,
+            1435f,
+            25f,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = white
+                setShadowLayer(8f, 2f, 3f, black)
             }
-        } else {
-            chartPath.moveTo(chartLeft, 1660f)
-            chartPath.lineTo(chartRight, 1660f)
-            canvas.drawText(
-                "Data elevasi belum tersedia",
-                350f,
-                1740f,
-                makePaint(muted, 22f)
+        )
+        bikeLine(550f, 1470f, 510f, 1530f)
+        bikeLine(550f, 1470f, 610f, 1500f)
+        bikeLine(550f, 1470f, 590f, 1540f)
+        bikeLine(510f, 1530f, 500f, 1560f)
+
+        // Tulisan SAPEDAHAN.
+        val brandPaint = makePaint(white, 108f, true).apply {
+            textScaleX = 0.92f
+            typeface = Typeface.create(
+                "sans-serif-condensed",
+                Typeface.BOLD_ITALIC
             )
         }
 
-        val chartPaint = makePaint(blue)
-        chartPaint.style = Paint.Style.STROKE
-        chartPaint.strokeWidth = 9f
-        chartPaint.strokeCap = Paint.Cap.ROUND
-        chartPaint.strokeJoin = Paint.Join.ROUND
-        canvas.drawPath(chartPath, chartPaint)
+        canvas.drawText(
+            "SAPEDAHAN",
+            540f,
+            1800f,
+            brandPaint
+        )
 
-        // Branding
-        canvas.drawText(
-            "SEPEDAHAN",
-            540f,
-            1870f,
-            makePaint(white, 66f, true).apply {
-                textAlign = Paint.Align.CENTER
-            }
-        )
-        canvas.drawText(
-            "RIDE YOUR OWN STORY",
-            540f,
-            1910f,
-            makePaint(muted, 20f).apply {
-                textAlign = Paint.Align.CENTER
-            }
-        )
+        val underline = Path().apply {
+            moveTo(270f, 1845f)
+            cubicTo(430f, 1880f, 700f, 1850f, 850f, 1825f)
+        }
+
+        val underlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = white
+            style = Paint.Style.STROKE
+            strokeWidth = 13f
+            strokeCap = Paint.Cap.ROUND
+            setShadowLayer(8f, 2f, 3f, black)
+        }
+        canvas.drawPath(underline, underlinePaint)
 
         return bitmap
     }
