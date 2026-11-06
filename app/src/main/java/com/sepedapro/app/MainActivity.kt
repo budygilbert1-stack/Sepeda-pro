@@ -401,24 +401,97 @@ class MainActivity : Activity(), LocationListener {
             point.longitude
         )
         marker.setOnMarkerClickListener { clicked, _ ->
-            clicked.showInfoWindow()
+            showSelectedLocationInfo(
+                clicked.position,
+                clicked.title ?: "Lokasi pilihan"
+            )
             true
         }
 
         map.controller.animateTo(point)
         map.invalidate()
 
-        Toast.makeText(
-            this,
-            String.format(
-                Locale("id", "ID"),
-                "Lokasi dipilih: %.6f, %.6f",
-                point.latitude,
-                point.longitude
-            ),
-            Toast.LENGTH_LONG
-        ).show()
+        showSelectedLocationInfo(point, title)
     }
+
+    private fun showSelectedLocationInfo(
+        point: GeoPoint,
+        title: String
+    ) {
+        val currentPoint = latestGpsPoint ?: lastLocation?.let {
+            GeoPoint(it.latitude, it.longitude)
+        }
+
+        val distanceText = if (currentPoint != null) {
+            val result = FloatArray(1)
+            Location.distanceBetween(
+                currentPoint.latitude,
+                currentPoint.longitude,
+                point.latitude,
+                point.longitude,
+                result
+            )
+
+            if (result[0] >= 1000f) {
+                String.format(
+                    Locale("id", "ID"),
+                    "%.2f km",
+                    result[0] / 1000.0
+                )
+            } else {
+                "${result[0].toInt()} m"
+            }
+        } else {
+            "Belum tersedia (menunggu GPS)"
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(
+                "Jarak dari posisi GPS Anda: $distanceText"
+            )
+            .setNegativeButton("Close", null)
+            .setPositiveButton("Navigasi") { _, _ ->
+                startNavigationToSelectedLocation()
+            }
+            .create()
+
+        dialog.show()
+
+        // Ketukan manual pada peta: cari nama tempat berdasarkan koordinat.
+        if (title == "Lokasi pilihan manual") {
+            locationHeaderExecutor.execute {
+                val placeName = try {
+                    val addresses = Geocoder(
+                        this@MainActivity,
+                        Locale("id", "ID")
+                    ).getFromLocation(
+                        point.latitude,
+                        point.longitude,
+                        1
+                    ) ?: emptyList()
+
+                    addresses.firstOrNull()?.let { address ->
+                        address.featureName
+                            ?.takeIf { it.isNotBlank() }
+                            ?: address.getAddressLine(0)
+                                ?.takeIf { it.isNotBlank() }
+                    }
+                } catch (_: Exception) {
+                    null
+                }
+
+                if (!placeName.isNullOrBlank()) {
+                    runOnUiThread {
+                        if (!isFinishing && !isDestroyed && dialog.isShowing) {
+                            dialog.setTitle(placeName)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private var selectedLocationMarker: Marker? = null
     private var selectedLocationPoint: GeoPoint? = null
     private var manualMapSelectionEnabled = true
@@ -1904,19 +1977,11 @@ private fun styleTrackingControls(isTracking: Boolean) {
             searchInput.requestFocus()
         }
 
-        val navigationButton = createMapControlButton(
-            "🧭",
-            "Buat rute dari GPS ke lokasi tujuan"
-        ) {
-            startNavigationToSelectedLocation()
-        }
-
         val controlSize = dp(48)
         val controlGap = dp(6)
 
         // Urutan dari atas ke bawah; tombol terakhir berada paling bawah.
         for (button in listOf(
-            navigationButton,
             searchLocationButton,
             manualLocationButton,
             zoomOutButton,
