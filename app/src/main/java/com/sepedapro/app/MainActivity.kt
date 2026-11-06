@@ -455,6 +455,7 @@ class MainActivity : Activity(), LocationListener {
     private var totalElapsedTime = 0L
     private var startTime = 0L
     private var lastTickTime = 0L
+    private var lastSnapshotWriteAt = 0L
 
     private lateinit var gradientText: TextView
     private lateinit var altitudeText: TextView
@@ -562,6 +563,7 @@ class MainActivity : Activity(), LocationListener {
 
             updateStatistics()
             checkSpeedWarning(now)
+            saveActiveTripSnapshot()
 
             timerHandler.postDelayed(this, 1000L)
         }
@@ -600,6 +602,7 @@ class MainActivity : Activity(), LocationListener {
             getSystemService(LOCATION_SERVICE) as LocationManager
 
         createDashboard()
+        restoreActiveTripSnapshot()
         updateStatistics()
 
         // Minta lokasi untuk header tanpa memulai rekaman perjalanan.
@@ -1158,6 +1161,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
             statusText.text = "JEDA MANUAL"
             statusText.setTextColor(orange)
             timerHandler.removeCallbacks(timerRunnable)
+            saveActiveTripSnapshot(force = true)
 
             startButton.visibility = View.GONE
             pauseButton.visibility = View.GONE
@@ -2435,6 +2439,7 @@ private fun styleTrackingControls(isTracking: Boolean) {
             return
         }
 
+        clearActiveTripSnapshot()
         totalDistance = 0.0
         totalMovingTime = 0L
         totalElapsedTime = 0L
@@ -2541,10 +2546,32 @@ private fun styleTrackingControls(isTracking: Boolean) {
             }
         }
 
-        if (tracking) {
+        val historySaved = if (tracking) {
             saveTripHistory()
+        } else {
+            true
         }
 
+        if (!historySaved) {
+            tracking = true
+            manuallyPaused = true
+            automaticallyPaused = false
+            isMoving = false
+            lastLocation = null
+            timerHandler.removeCallbacks(timerRunnable)
+            saveActiveTripSnapshot(force = true)
+            startButton.visibility = View.GONE
+            pauseButton.visibility = View.GONE
+            resumeButton.visibility = View.VISIBLE
+            stopButton.visibility = View.VISIBLE
+            statusText.text = "RIWAYAT GAGAL DISIMPAN · PERJALANAN DIPERTAHANKAN"
+            statusText.setTextColor(orange)
+            Toast.makeText(this, "Riwayat gagal disimpan. Perjalanan dipertahankan dalam keadaan jeda.", Toast.LENGTH_LONG).show()
+            updateStatistics()
+            return
+        }
+
+        clearActiveTripSnapshot()
         tracking = false
         smoothedMapBearing = null
         map.setMapOrientation(0f)
@@ -2949,6 +2976,7 @@ val now = System.currentTimeMillis()
 
         checkSpeedWarning(now)
         updateStatistics()
+        saveActiveTripSnapshot()
     }
 
 
@@ -2992,14 +3020,186 @@ val now = System.currentTimeMillis()
         }
     }
 
-    private fun saveTripHistory() {
+
+    private fun saveActiveTripSnapshot(force: Boolean = false) {
+        if (!tracking) return
+
+        val now = System.currentTimeMillis()
+        if (!force && now - lastSnapshotWriteAt < 5000L) return
+
+        try {
+            val snapshot = JSONObject()
+            snapshot.put("version", 1)
+            snapshot.put("startTime", startTime)
+            snapshot.put("totalDistance", totalDistance)
+            snapshot.put("totalMovingTime", totalMovingTime)
+            snapshot.put("totalElapsedTime", totalElapsedTime)
+            snapshot.put("maxSpeedKmh", maxSpeedKmh)
+            snapshot.put("totalElevationGainMeters", totalElevationGainMeters)
+            snapshot.put("currentAltitudeMeters",
+                currentAltitudeMeters ?: JSONObject.NULL)
+            snapshot.put("lastElevationBaselineMeters",
+                lastElevationBaselineMeters ?: JSONObject.NULL)
+            snapshot.put("lastElevationProfileDistanceMeters",
+                lastElevationProfileDistanceMeters)
+
+            val route = JSONArray()
+            for (point in routeCoordinates) {
+                val item = JSONObject()
+                item.put("lat", point.latitude)
+                item.put("lon", point.longitude)
+                route.put(item)
+            }
+            snapshot.put("route", route)
+
+            val profile = JSONArray()
+            for (point in elevationProfile) {
+                val item = JSONObject()
+                item.put("distance", point.distanceMeters)
+                item.put("altitude", point.altitudeMeters)
+                profile.put(item)
+            }
+            snapshot.put("elevationProfile", profile)
+
+            val saved = getSharedPreferences(
+                "sepeda_pro_active_trip",
+                MODE_PRIVATE
+            ).edit()
+                .putString("snapshot", snapshot.toString())
+                .commit()
+
+            if (saved) {
+                lastSnapshotWriteAt = now
+            }
+        } catch (_: Exception) {
+            // Snapshot sebelumnya tetap dipertahankan jika penulisan gagal.
+        }
+    }
+
+    private fun clearActiveTripSnapshot() {
+        getSharedPreferences(
+            "sepeda_pro_active_trip",
+            MODE_PRIVATE
+        ).edit().remove("snapshot").commit()
+
+        lastSnapshotWriteAt = 0L
+    }
+
+    private fun restoreActiveTripSnapshot() {
+        val preferences = getSharedPreferences(
+            "sepeda_pro_active_trip",
+            MODE_PRIVATE
+        )
+        val raw = preferences.getString("snapshot", null) ?: return
+
+        try {
+            val snapshot = JSONObject(raw)
+            if (snapshot.optInt("version", 0) != 1) return
+
+            startTime = snapshot.optLong("startTime", 0L)
+            totalDistance = snapshot.optDouble("totalDistance", 0.0)
+            totalMovingTime = snapshot.optLong("totalMovingTime", 0L)
+            totalElapsedTime = snapshot.optLong("totalElapsedTime", 0L)
+            maxSpeedKmh = snapshot.optDouble("maxSpeedKmh", 0.0)
+            totalElevationGainMeters =
+                snapshot.optDouble("totalElevationGainMeters", 0.0)
+
+            currentAltitudeMeters =
+                if (snapshot.isNull("currentAltitudeMeters")) null
+                else snapshot.optDouble("currentAltitudeMeters")
+
+            lastElevationBaselineMeters =
+                if (snapshot.isNull("lastElevationBaselineMeters")) null
+                else snapshot.optDouble("lastElevationBaselineMeters")
+
+            lastElevationProfileDistanceMeters =
+                snapshot.optDouble("lastElevationProfileDistanceMeters", -10.0)
+
+            routeCoordinates.clear()
+            val route = snapshot.optJSONArray("route") ?: JSONArray()
+            for (i in 0 until route.length()) {
+                val item = route.optJSONObject(i) ?: continue
+                routeCoordinates.add(
+                    GeoPoint(
+                        item.optDouble("lat"),
+                        item.optDouble("lon")
+                    )
+                )
+            }
+
+            elevationProfile.clear()
+            val profile = snapshot.optJSONArray("elevationProfile") ?: JSONArray()
+            for (i in 0 until profile.length()) {
+                val item = profile.optJSONObject(i) ?: continue
+                elevationProfile.add(
+                    ElevationProfilePoint(
+                        item.optDouble("distance"),
+                        item.optDouble("altitude")
+                    )
+                )
+            }
+
+            elevationSamples.clear()
+            resetGradientSamples()
+
+            tracking = true
+            manuallyPaused = true
+            automaticallyPaused = false
+            isMoving = false
+            lastLocation = null
+            currentSpeedKmh = 0.0
+            lastTickTime = System.currentTimeMillis()
+
+            routeLine.setPoints(ArrayList(routeCoordinates))
+
+            if (routeCoordinates.isNotEmpty()) {
+                val lastPoint = routeCoordinates.last()
+                bikeMarker.position = lastPoint
+                latestGpsPoint = lastPoint
+                map.controller.setZoom(17.0)
+                map.controller.animateTo(lastPoint)
+            }
+
+            map.invalidate()
+
+            pauseIndicator.clearAnimation()
+            pauseIndicator.alpha = 1.0f
+            pauseIndicator.visibility = View.GONE
+
+            startButton.visibility = View.GONE
+            pauseButton.visibility = View.GONE
+            resumeButton.visibility = View.VISIBLE
+            stopButton.visibility = View.VISIBLE
+
+            statusText.text = "PERJALANAN DIPULIHKAN · JEDA"
+            statusText.setTextColor(orange)
+
+            updateStatistics()
+
+            Toast.makeText(
+                this,
+                "Perjalanan sebelumnya berhasil dipulihkan. Tekan Lanjutkan untuk merekam GPS.",
+                Toast.LENGTH_LONG
+            ).show()
+
+        } catch (_: Exception) {
+            // Jangan hapus snapshot jika pemulihan belum berhasil.
+            Toast.makeText(
+                this,
+                "Data pemulihan ditemukan tetapi belum dapat dibaca.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun saveTripHistory(): Boolean {
         if (totalElapsedTime <= 0L && totalDistance <= 0.0) {
             Toast.makeText(
                 this,
                 "Perjalanan terlalu singkat untuk disimpan.",
                 Toast.LENGTH_SHORT
             ).show()
-            return
+            return true
         }
 
         try {
@@ -3067,12 +3267,14 @@ val now = System.currentTimeMillis()
                 },
                 Toast.LENGTH_LONG
             ).show()
+            return saved
         } catch (e: Exception) {
             Toast.makeText(
                 this,
                 "Gagal menyimpan riwayat perjalanan.",
                 Toast.LENGTH_LONG
             ).show()
+            return false
         }
     }
 
@@ -3230,8 +3432,10 @@ val now = System.currentTimeMillis()
             average
         )
 
-        val durationMinutes = (trip.optLong("duration", 0L) / 60000L)
+        // Durasi riwayat disimpan dalam DETIK, bukan milidetik.
+        val durationSeconds = trip.optLong("duration", 0L)
             .coerceAtLeast(0L)
+        val durationMinutes = durationSeconds / 60L
         val hours = durationMinutes / 60L
         val minutes = durationMinutes % 60L
         val durationText = if (hours > 0L) {
@@ -3619,6 +3823,7 @@ val now = System.currentTimeMillis()
     }
 
     override fun onDestroy() {
+        saveActiveTripSnapshot(force = true)
         timerHandler.removeCallbacks(timerRunnable)
         weatherHandler.removeCallbacksAndMessages(null)
         weatherExecutor.shutdownNow()
