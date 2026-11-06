@@ -556,10 +556,9 @@ class MainActivity : Activity(), LocationListener {
                 )
             }
 
-            // Hitung durasi setelah status jeda otomatis diperbarui.
-            if (!automaticallyPaused) {
-                totalElapsedTime += delta
-            }
+            // Durasi total tetap berjalan selama perjalanan aktif,
+            // termasuk ketika jeda otomatis. Jeda manual menghentikan timer.
+            totalElapsedTime += delta
 
             updateStatistics()
             checkSpeedWarning(now)
@@ -2541,9 +2540,8 @@ private fun styleTrackingControls(isTracking: Boolean) {
             }
 
             lastTickTime = now
-            if (!automaticallyPaused) {
-                totalElapsedTime += delta
-            }
+            // Masukkan detik terakhir meskipun sedang jeda otomatis.
+            totalElapsedTime += delta
         }
 
         val historySaved = if (tracking) {
@@ -3433,8 +3431,19 @@ val now = System.currentTimeMillis()
         )
 
         // Durasi riwayat disimpan dalam DETIK, bukan milidetik.
-        val durationSeconds = trip.optLong("duration", 0L)
+        val storedDuration = trip.optLong("duration", 0L)
             .coerceAtLeast(0L)
+        val movingDuration = trip.optLong("moving", 0L)
+            .coerceAtLeast(0L)
+
+        // Riwayat lama mungkin memiliki durasi total 0.
+        // Gunakan waktu bersepeda sebagai nilai minimum yang tersedia.
+        val durationSeconds = if (storedDuration > 0L) {
+            storedDuration
+        } else {
+            movingDuration
+        }
+
         val durationMinutes = durationSeconds / 60L
         val hours = durationMinutes / 60L
         val minutes = durationMinutes % 60L
@@ -3703,12 +3712,23 @@ val now = System.currentTimeMillis()
 
     private fun showTripDetails(trip: JSONObject) {
         val distance = trip.optDouble("distance", 0.0) / 1000.0
-        val duration = trip.optLong("duration", 0L)
+        val storedDuration = trip.optLong("duration", 0L)
+            .coerceAtLeast(0L)
         val moving = trip.optLong("moving", 0L)
-        val stopped = trip.optLong(
-            "stopped",
-            (duration - moving).coerceAtLeast(0L)
-        )
+            .coerceAtLeast(0L)
+        val duration = if (storedDuration > 0L) {
+            storedDuration
+        } else {
+            moving
+        }
+        val stopped = if (storedDuration > 0L) {
+            trip.optLong(
+                "stopped",
+                (duration - moving).coerceAtLeast(0L)
+            )
+        } else {
+            0L
+        }
         val average = trip.optDouble("average", 0.0)
         val maxSpeed = trip.optDouble("maxSpeed", 0.0)
         val route = trip.optJSONArray("route") ?: JSONArray()
